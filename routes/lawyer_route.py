@@ -18,7 +18,6 @@ from controllers.lawyer_Controller import (
 router = APIRouter(prefix="/lawyer", tags=["Lawyer"])
 
 
-# --- පවතින නීතිඥ ලියාපදිංචි කිරීමේ මාවත (Registration) ---
 @router.post("/register")
 async def register_lawyer_route(
         fullName: str = Form(...),
@@ -101,7 +100,6 @@ async def register_lawyer_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- නීතිඥ ලැයිස්තු ලබා ගැනීම ---
 @router.get("/all")
 async def get_lawyers_route(province: Optional[str] = None, specialization: Optional[str] = None,
                             status: str = "approved"):
@@ -123,7 +121,6 @@ async def get_lawyer_route(lawyer_id: str):
     return JSONResponse(status_code=200, content={"success": True, "lawyer": lawyer})
 
 
-# --- Admin අනුමත කිරීම් ---
 @router.post("/{lawyer_id}/approve")
 async def approve_lawyer_route(lawyer_id: str):
     result = await approve_lawyer(lawyer_id)
@@ -136,10 +133,8 @@ async def reject_lawyer_route(lawyer_id: str, reason: str = Form(...)):
     return JSONResponse(status_code=200, content={"success": True, "message": "Rejected"})
 
 
-# --- 🚀 නව විශේෂාංග: නීතිඥයාට තම වැඩ කරන වේලාවන් (Availability) යාවත්කාලීන කිරීමට ---
 @router.put("/{lawyer_id}/availability")
 async def update_availability(lawyer_id: str, data: dict = Body(...)):
-    """ නීතිඥයාට තමාට හැකි වේලාවන් (Availability) Dashboard එකෙන් වෙනස් කිරීමට මෙය අවශ්‍ය වේ """
     try:
         db = get_database()
         availability = data.get("availability")
@@ -154,7 +149,7 @@ async def update_availability(lawyer_id: str, data: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- 📅 නව විශේෂාංග: පාරිභෝගික පත්වීම් (Appointments) කළමනාකරණය ---
+
 @router.patch("/{lawyer_id}/appointments/{appointment_id}/manage")
 async def manage_appointment(
         lawyer_id: str,
@@ -163,7 +158,7 @@ async def manage_appointment(
         new_date: Optional[str] = Form(None),
         reason: Optional[str] = Form(None)
 ):
-    """ නීතිඥයාට තම පවතින පත්වීම් පිළිගැනීමට හෝ වෙනත් දිනකට මාරු කිරීමට මෙය භාවිතා වේ """
+
     try:
         db = get_database()
         update_data = {"updatedAt": datetime.utcnow()}

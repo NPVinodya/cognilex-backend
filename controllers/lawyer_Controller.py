@@ -154,6 +154,7 @@ async def get_lawyer_by_id(lawyer_id: str) -> Optional[Dict]:
     """
     db = get_database()
     lawyers_collection = db["lawyers"]
+    users_collection = db["users"]
 
     try:
         lawyer = lawyers_collection.find_one({"_id": ObjectId(lawyer_id)})
@@ -248,11 +249,11 @@ async def get_pending_lawyers() -> List[Dict]:
 async def get_lawyer_profile_data(lawyer_id: str) -> Optional[Dict]:
     db = get_database()
     try:
-        # ID එක ObjectId එකක් ලෙස පරිවර්තනය කිරීම
+
         lawyer = db["lawyers"].find_one({"_id": ObjectId(lawyer_id)})
 
         if lawyer:
-            # Frontend types.ts වලට ගැලපෙන සේ දත්ත සකස් කිරීම
+            # Frontend types.ts
             lawyer["id"] = str(lawyer["_id"])
             lawyer["fullName"] = lawyer.get("fullName")
             lawyer["practiceAreas"] = lawyer.get("practiceAreas", [])
@@ -265,7 +266,7 @@ async def get_lawyer_profile_data(lawyer_id: str) -> Optional[Dict]:
             lawyer["phone"] = lawyer.get("phone")
             lawyer["email"] = lawyer.get("email")
 
-            # පෞද්ගලික දත්ත ඉවත් කිරීම (Security)
+
             if "password" in lawyer: del lawyer["password"]
             del lawyer["_id"]
 
