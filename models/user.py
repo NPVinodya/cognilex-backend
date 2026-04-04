@@ -37,13 +37,33 @@ class UserModel:
 
     @staticmethod
     def user_response(user: dict) -> dict:
-        return {
+        resp = {
             "id": str(user["_id"]),
             "email": user["email"],
             "name": user["name"],
             "created_at": user["created_at"].isoformat() if isinstance(user["created_at"], datetime) else str(user["created_at"])
         }
+        if "preferences" in user:
+            resp["preferences"] = user["preferences"]
+        if "avatar_url" in user:
+            resp["avatar_url"] = user["avatar_url"]
+        return resp
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class UpdateProfileRequest(BaseModel):
+    email: EmailStr
+    name: str
+    avatar_url: str = None
+
+class UpdatePasswordRequest(BaseModel):
+    email: EmailStr
+    current_password: str
+    new_password: str
+
+class UpdatePreferencesRequest(BaseModel):
+    email: EmailStr
+    appearance: str
+    language: str
