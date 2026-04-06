@@ -39,7 +39,8 @@ def connect_to_mongodb():
         client.admin.command('ping')
         # Select database (replace 'your_database_name' with your actual database name)
         db = client["CogniLex_db"]
-       # db.users.create_index("email", unique=True)
+        # Enforce unique emails at DB level to prevent duplicate registration races.
+        db.users.create_index("email", unique=True)
         print("Connected to MongoDB Atlas successfully")
         return db
     except ConnectionFailure as e:

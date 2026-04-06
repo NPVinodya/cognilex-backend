@@ -4,11 +4,24 @@ from controllers.admin_Controller import (
     get_all_users,
     get_pending_lawyers,
     approve_or_reject_lawyer,
-    delete_user
+    delete_user,
+    login_admin,
 )
-from models.admin import ApprovalRequest
+from models.admin import ApprovalRequest, AdminLoginRequest
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.post("/login")
+async def admin_login(request: AdminLoginRequest):
+    """Admin login with JWT token generation"""
+    try:
+        return await login_admin(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in /admin/login: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/stats")

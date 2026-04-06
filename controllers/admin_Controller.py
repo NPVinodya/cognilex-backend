@@ -1,6 +1,11 @@
 from bson import ObjectId
 from typing import Dict
+from fastapi import HTTPException, status
+
 from config.cognilex_db import get_database
+from config.jwt import create_access_token
+from models.user import UserModel
+from models.admin import AdminLoginRequest
 
 
 async def get_dashboard_stats() -> Dict:
@@ -136,3 +141,69 @@ async def delete_user(user_id: str) -> Dict:
     except Exception as e:
         print(f"Error in delete_user: {str(e)}")
         raise
+
+
+async def login_admin(data: AdminLoginRequest) -> Dict:
+    """Authenticate admin and return JWT access token."""
+    try:
+        db = get_database()
+
+        if db is None:
+            raise Exception("Database connection not available")
+
+        admins_collection = db["admins"]
+        admin = admins_collection.find_one({"email": data.email})
+
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        if "password_hash" not in admin:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Password data not found in database",
+            )
+
+        if not UserModel.verify_password(data.password, admin["password_hash"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        admin_role = admin.get("user-role", "admin")
+        if admin_role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied",
+            )
+
+        admin_id = str(admin["_id"]) if isinstance(admin["_id"], ObjectId) else str(admin["_id"])
+        access_token = create_access_token(
+            {
+                "sub": admin_id,
+                "email": admin["email"],
+                "role": admin_role,
+            }
+        )
+
+        return {
+            "message": "Admin login successful",
+            "user": {
+                "id": admin_id,
+                "email": admin["email"],
+                "name": admin.get("name"),
+                "role": admin_role,
+            },
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in login_admin: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        )
