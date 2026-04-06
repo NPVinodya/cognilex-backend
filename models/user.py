@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pydantic import BaseModel, EmailStr, ConfigDict
 from argon2 import PasswordHasher
+from typing import Literal, Optional
 
 pwd_hasher = PasswordHasher()
 
@@ -8,6 +9,7 @@ class RegisterUserRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
+    role: Literal["user"] = "user"
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -29,7 +31,7 @@ class UserModel:
         return {
             "email": data.email,
             "name": data.name,
-            "user-role": "user",
+            "user-role": data.role,
             "password_hash": UserModel.hash_password(data.password),
             "created_at": now,
             "updated_at": now
@@ -53,6 +55,15 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class RegisterOAuthRequest(BaseModel):
+    """Password-less registration for users who sign in via Google / OAuth.
+    Appwrite handles authentication; we only need to mirror their profile in MongoDB.
+    """
+    appwrite_id: str
+    email: EmailStr
+    name: str
+    role: Literal["user"] = "user"
+
 class UpdateProfileRequest(BaseModel):
     email: EmailStr
     name: str
@@ -63,6 +74,10 @@ class UpdatePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
+class UpdatePreferencesRequest(BaseModel):
+    email: EmailStr
+    appearance: str
+    language: str
 class UpdatePreferencesRequest(BaseModel):
     email: EmailStr
     appearance: str

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, status, File, UploadFile
-from models.user import RegisterUserRequest, LoginRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
+from models.user import RegisterUserRequest, LoginRequest, RegisterOAuthRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
 from controllers.user_controller import UserController
 
 router = APIRouter(tags=["Authentication"])
@@ -7,6 +7,11 @@ router = APIRouter(tags=["Authentication"])
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(user_data: RegisterUserRequest):
     return UserController.register_user(user_data)
+
+@router.post("/register-oauth", status_code=status.HTTP_200_OK)
+async def register_oauth(user_data: RegisterOAuthRequest):
+    """Idempotent: creates a MongoDB record for a Google/OAuth user if one doesn't already exist."""
+    return UserController.register_oauth_user(user_data)
 
 @router.get("/user/{email}")
 async def get_user_by_email(email: str):
