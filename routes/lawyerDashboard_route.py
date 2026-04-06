@@ -8,8 +8,14 @@ from controllers.lawyerDashboard_Controller import (
     get_lawyer_clients,
     get_lawyer_documents,
     add_availability_slot,
-    delete_availability_slot
+    delete_availability_slot,
+    get_slot_by_id,
+    get_lawyer_profile_settings,
+    update_lawyer_profile
 )
+
+from controllers.user_controller import UserController
+from models.user import UpdatePasswordRequest
 
 router = APIRouter(prefix="/lawyer-dashboard", tags=["Lawyer Dashboard"])
 
@@ -76,5 +82,49 @@ async def delete_slot_route(slot_id: str):
     try:
         result = await delete_availability_slot(slot_id)
         return JSONResponse(status_code=200, content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/slot/{slot_id}")
+async def get_slot_route(slot_id: str):
+    try:
+        slot = await get_slot_by_id(slot_id)
+        if not slot:
+            raise HTTPException(status_code=404, detail="Slot not found")
+        return JSONResponse(status_code=200, content={"success": True, "slot": slot})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Settings & Profile Routes ---
+
+@router.get("/{lawyer_id}/profile")
+async def get_profile_route(lawyer_id: str):
+    try:
+        result = await get_lawyer_profile_settings(lawyer_id)
+        return JSONResponse(status_code=200, content=result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{lawyer_id}/profile")
+async def update_profile_route(lawyer_id: str, update_data: dict):
+    try:
+        result = await update_lawyer_profile(lawyer_id, update_data)
+        return JSONResponse(status_code=200, content=result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/password/update")
+async def update_password_route(data: UpdatePasswordRequest):
+    try:
+        result = UserController.update_user_password(data)
+        return JSONResponse(status_code=200, content=result)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
