@@ -1,3 +1,5 @@
+from typing import Any
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
 class UserStats(BaseModel):
@@ -27,5 +29,18 @@ class ApprovalRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class AdminCreateRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    added_by: str
+
+class AdminResponse(BaseModel):
+    id: str
+    name: str
+    email: EmailStr
+    added_by: str
+    created_at: Any
 
 

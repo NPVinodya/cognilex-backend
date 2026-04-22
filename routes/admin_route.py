@@ -6,8 +6,11 @@ from controllers.admin_Controller import (
     approve_or_reject_lawyer,
     delete_user,
     login_admin,
+    register_admin,
+    get_all_admins,
+    delete_admin,
 )
-from models.admin import ApprovalRequest, AdminLoginRequest
+from models.admin import ApprovalRequest, AdminLoginRequest, AdminCreateRequest
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -78,4 +81,38 @@ async def remove_user(user_id: str):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         print(f"❌ Error in /admin/users delete: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/register")
+async def register_new_admin(request: AdminCreateRequest):
+    """Register a new administrator"""
+    try:
+        return await register_admin(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in /admin/register: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/admins")
+async def get_admins():
+    """Get all administrators"""
+    try:
+        return await get_all_admins()
+    except Exception as e:
+        print(f"❌ Error in /admin/admins: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.delete("/admins/{admin_id}")
+async def remove_admin(admin_id: str):
+    """Delete an administrator"""
+    try:
+        return await delete_admin(admin_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"❌ Error in /admin/admins delete: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
