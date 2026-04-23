@@ -300,3 +300,272 @@ async def delete_admin(admin_id: str) -> Dict:
     except Exception as e:
         print(f"Error in delete_admin: {str(e)}")
         raise
+
+async def update_admin_profile(admin_id: str, data: Dict) -> Dict:
+    """Update administrator profile name and email"""
+    try:
+        db = get_database()
+        admins_collection = db["admins"]
+
+        result = admins_collection.update_one(
+            {"_id": ObjectId(admin_id)},
+            {"$set": {
+                "name": data["name"],
+                "email": data["email"],
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+
+        if result.matched_count == 0:
+            raise ValueError("Administrator not found")
+
+        return {
+            "success": True,
+            "message": "Profile updated successfully"
+        }
+    except Exception as e:
+        print(f"Error in update_admin_profile: {str(e)}")
+        raise
+
+async def change_admin_password(admin_id: str, current_password: str, new_password: str) -> Dict:
+    """Change administrator password with verification"""
+    try:
+        db = get_database()
+        admins_collection = db["admins"]
+
+        admin = admins_collection.find_one({"_id": ObjectId(admin_id)})
+        if not admin:
+            raise ValueError("Administrator not found")
+
+        # Verify current password
+        stored_hash = admin.get("password_hash")
+
+        # But since we're in the controller, we can import UserModel
+        from models.user import UserModel
+        
+        # Verify current password (assuming verify_password logic exists or using UserModel)
+        try:
+            if not UserModel.verify_password(current_password, stored_hash):
+                # Check legacy plain text
+                if stored_hash != current_password:
+                    raise ValueError("Current password is incorrect")
+        except:
+             if stored_hash != current_password:
+                    raise ValueError("Current password is incorrect")
+
+        # Hash new password
+        new_hash = UserModel.hash_password(new_password)
+        
+        admins_collection.update_one(
+            {"_id": ObjectId(admin_id)},
+            {"$set": {
+                "password_hash": new_hash,
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+
+        return {
+            "success": True,
+            "message": "Password changed successfully"
+        }
+    except Exception as e:
+        print(f"Error in change_admin_password: {str(e)}")
+        raise
+
+async def get_platform_settings() -> Dict:
+    """Get global platform configuration settings"""
+    try:
+        db = get_database()
+        settings_collection = db["settings"]
+        
+        config = settings_collection.find_one({"key": "platform_config"})
+        if not config:
+            # Return defaults if not found
+            return {
+                "markup_percentage": 20.0,
+                "maintenance_mode": False,
+                "allow_new_registrations": True
+            }
+        
+        return {
+            "markup_percentage": config.get("markup_percentage", 20.0),
+            "maintenance_mode": config.get("maintenance_mode", False),
+            "allow_new_registrations": config.get("allow_new_registrations", True)
+        }
+    except Exception as e:
+        print(f"Error in get_platform_settings: {str(e)}")
+        raise
+
+async def update_platform_settings(data: Dict) -> Dict:
+    """Update global platform configuration settings"""
+    try:
+        db = get_database()
+        settings_collection = db["settings"]
+        
+        update_data = {
+            "updated_at": datetime.now(timezone.utc)
+        }
+        
+        if "markup_percentage" in data:
+            update_data["markup_percentage"] = float(data["markup_percentage"])
+        if "maintenance_mode" in data:
+            update_data["maintenance_mode"] = bool(data["maintenance_mode"])
+        if "allow_new_registrations" in data:
+            update_data["allow_new_registrations"] = bool(data["allow_new_registrations"])
+            
+        settings_collection.update_one(
+            {"key": "platform_config"},
+            {"$set": update_data},
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Platform settings updated successfully"
+        }
+    except Exception as e:
+        print(f"Error in update_platform_settings: {str(e)}")
+        raise
+
+async def get_admin_preferences(admin_id: str) -> Dict:
+    """Get personalized administrative preferences"""
+    try:
+        db = get_database()
+        admins_collection = db["admins"]
+        admin = admins_collection.find_one({"_id": ObjectId(admin_id)})
+        
+        if not admin:
+            return {"darkMode": False, "pushNotifications": True}
+            
+        return admin.get("preferences", {"darkMode": False, "pushNotifications": True})
+    except Exception as e:
+        print(f"Error in get_admin_preferences: {str(e)}")
+        raise
+
+async def update_admin_preferences(admin_id: str, prefs: Dict) -> Dict:
+    """Update personalized administrative preferences"""
+    try:
+        db = get_database()
+        admins_collection = db["admins"]
+        
+        admins_collection.update_one(
+            {"_id": ObjectId(admin_id)},
+            {"$set": {"preferences": prefs}}
+        )
+        
+        return {"success": True, "message": "Preferences updated"}
+    except Exception as e:
+        print(f"Error in update_admin_preferences: {str(e)}")
+        raise
+
+async def get_financial_stats(period: str = "daily") -> Dict:
+    """Calculate platform-wide financial statistics with period support"""
+    try:
+        db = get_database()
+        bookings_col = db["bookings"]
+        
+        # 1. Summary Stats
+        pipeline = [
+            {"$match": {"payment_status": "success"}},
+            {"$group": {
+                "_id": None,
+                "total_revenue": {"$sum": {"$toDouble": "$amount"}},
+                "count": {"$sum": 1}
+            }}
+        ]
+        stats_result = list(bookings_col.aggregate(pipeline))
+        stats = stats_result[0] if stats_result else {"total_revenue": 0, "count": 0}
+        
+        count = stats.get("count", 0)
+        total_revenue = stats.get("total_revenue", 0)
+        platform_fees = count * 200
+        lawyer_payouts = total_revenue - platform_fees
+
+        # 2. Trend Data based on period
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        
+        if period == "monthly":
+            # Last 6 months
+            start_date = now - timedelta(days=180)
+            group_format = "%Y-%m"
+        else:
+            # Last 7 days
+            start_date = now - timedelta(days=7)
+            group_format = "%Y-%m-%d"
+            
+        daily_pipeline = [
+            {"$match": {
+                "createdAt": {"$gte": start_date},
+                "payment_status": "success"
+            }},
+            {"$group": {
+                "_id": {"$dateToString": {"format": group_format, "date": "$createdAt"}},
+                "revenue": {"$sum": {"$toDouble": "$amount"}}
+            }},
+            {"$sort": {"_id": 1}}
+        ]
+        trend_data = list(bookings_col.aggregate(daily_pipeline))
+        
+        # 3. Growth
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
+            
+        curr_month_rev = list(bookings_col.aggregate([
+            {"$match": {"createdAt": {"$gte": current_month_start}, "payment_status": "success"}},
+            {"$group": {"_id": None, "total": {"$sum": {"$toDouble": "$amount"}}}}
+        ]))
+        last_month_rev = list(bookings_col.aggregate([
+            {"$match": {"createdAt": {"$gte": last_month_start, "$lt": current_month_start}, "payment_status": "success"}},
+            {"$group": {"_id": None, "total": {"$sum": {"$toDouble": "$amount"}}}}
+        ]))
+        
+        cur_total = curr_month_rev[0]["total"] if curr_month_rev else 0
+        last_total = last_month_rev[0]["total"] if last_month_rev else 0
+        growth = round(((cur_total - last_total) / last_total * 100) if last_total > 0 else (100.0 if cur_total > 0 else 0), 1)
+
+        # 4. Recent Transactions with Lawyer Name
+        pipeline_tx = [
+            {"$match": {"payment_status": "success"}},
+            {"$sort": {"createdAt": -1}},
+            {"$limit": 10},
+            {"$lookup": {
+                "from": "users",
+                "localField": "lawyer_id",
+                "foreignField": "_id",
+                "as": "lawyer_info"
+            }},
+            {"$unwind": {"path": "$lawyer_info", "preserveNullAndEmptyArrays": True}}
+        ]
+        
+        recent_tx_raw = list(bookings_col.aggregate(pipeline_tx))
+        recent_tx = []
+        
+        for tx in recent_tx_raw:
+            recent_tx.append({
+                "id": str(tx.get("_id")),
+                "amount": float(tx.get("amount", 0)),
+                "clientName": tx.get("client_name", "Anonymous"),
+                "lawyerName": tx.get("lawyer_info", {}).get("fullName", "N/A"),
+                "lawyerId": str(tx.get("lawyer_id", "N/A")),
+                "date": tx.get("createdAt").isoformat() if tx.get("createdAt") else ""
+            })
+
+        return {
+            "summary": {
+                "totalRevenue": total_revenue,
+                "platformFees": platform_fees,
+                "lawyerPayouts": lawyer_payouts,
+                "totalBookings": count,
+                "growth": growth,
+                "feeValue": 200
+            },
+            "trend": trend_data,
+            "recentTransactions": recent_tx
+        }
+    except Exception as e:
+        print(f"Error in get_financial_stats: {str(e)}")
+        raise
+    except Exception as e:
+        print(f"Error in get_financial_stats: {str(e)}")
+        raise
