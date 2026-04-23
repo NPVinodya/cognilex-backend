@@ -15,10 +15,18 @@ def get_30_min_chunks(time_range: str) -> list:
         # Normalize the time string (e.g. 09.00 -> 09:00)
         t_range = time_range.replace(".", ":")
         
-        if " - " not in t_range:
+        # Robust dash splitting (handle ' - ' or '-')
+        if " - " in t_range:
+            parts = [x.strip() for x in t_range.split(" - ")]
+        elif "-" in t_range:
+            parts = [x.strip() for x in t_range.split("-")]
+        else:
             return [time_range]
 
-        start_str, end_str = [x.strip() for x in t_range.split(" - ")]
+        if len(parts) != 2:
+            return [time_range]
+
+        start_str, end_str = parts
         
         # Determine the format based on the presence of ':'
         fmt = "%I:%M %p"
@@ -34,7 +42,6 @@ def get_30_min_chunks(time_range: str) -> list:
             next_t = current + dt_lib.timedelta(minutes=30)
             if next_t > end_time:
                 break
-            # Use original punctuation if possible? No, standardizing to : is better
             chunks.append(f"{current.strftime('%I:%M %p')} - {next_t.strftime('%I:%M %p')}")
             current = next_t
         return chunks
@@ -282,10 +289,25 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
 
     # Resolve the true Lawyer Profile ID (in case lawyer_id is a User ID)
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+    
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    print(f"[Backend] Fetching appointments for Lawyer: {lawyer_id} (Resolved: {lawyer_obj_id}) | Date >= {today_str}")
 
-    query = {"lawyer_id": lawyer_obj_id}
+    query = {
+        "$or": [
+            {"lawyer_id": lawyer_obj_id},
+            {"lawyer_id": str(lawyer_obj_id)},
+            {"lawyer_id": lawyer_id},
+            {"lawyerId": lawyer_obj_id},
+            {"lawyerId": str(lawyer_obj_id)},
+            {"lawyerId": lawyer_id}
+        ],
+        "date": {"$gte": today_str}
+    }
 
-    cursor = db["appointments"].find(query).sort("date", 1).limit(50)
+    # Sort by date and then time. 
+    # Note: string sort for time isn't perfect for AM/PM but works for YYYY-MM-DD
+    cursor = db["appointments"].find(query).sort([("date", 1), ("time", 1)]).limit(150)
     
     slots = []
     for doc in cursor:
@@ -297,9 +319,11 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
             "isBooked": doc.get("status") not in ["available", "pending_payment"],
             "clientName": doc.get("clientName", "Legal Client") if doc.get("status") != "available" else "Open Slot",
             "type": doc.get("type", doc.get("appointment_type", "Consultation")),
-            "parent_range": doc.get("parent_range")
+            "parent_range": doc.get("parent_range"),
+            "status": doc.get("status", "available")
         })
     
+    print(f"[Backend] Found {len(slots)} slots for lawyer {lawyer_id}")
     return slots
 
 
