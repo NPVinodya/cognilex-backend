@@ -1,11 +1,12 @@
 import os
 import uuid
 import boto3
+from datetime import datetime, timezone
 from fastapi import HTTPException, status, UploadFile
 from bson import ObjectId
 from config.cognilex_db import get_database
 from config.jwt import create_access_token
-from models.user import RegisterUserRequest, UserModel, LoginRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
+from models.user import RegisterUserRequest, UserModel, LoginRequest, RegisterOAuthRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
 from pymongo.errors import DuplicateKeyError
 
 
@@ -14,6 +15,13 @@ class UserController:
     def register_user(data: RegisterUserRequest):
         db = get_database()
         users = db["users"]
+
+        normalized_name = str(data.name).strip()
+        if not normalized_name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Full name is required",
+            )
 
         normalized_email = str(data.email).strip().lower()
 
@@ -25,7 +33,9 @@ class UserController:
             )
 
         user_doc = UserModel.create_user_dict(data)
+        user_doc["name"] = normalized_name
         user_doc["email"] = normalized_email
+        user_doc["user-role"] = "user"
 
         try:
             result = users.insert_one(user_doc)
@@ -47,18 +57,88 @@ class UserController:
             )
 
     @staticmethod
+    def register_oauth_user(data: RegisterOAuthRequest):
+        """
+        Idempotent upsert for users who authenticated via Google/OAuth.
+        - If the user already exists (by appwrite_id or email), returns their data.
+        - If not, creates a new MongoDB document with role='user' and no password.
+        """
+        db = get_database()
+        users = db["users"]
+
+        normalized_email = str(data.email).strip().lower()
+        normalized_name = str(data.name).strip() or normalized_email.split("@")[0]
+
+        # Check by appwrite_id first, then fall back to email
+        existing = users.find_one({"appwrite_id": data.appwrite_id})
+        if not existing:
+            existing = users.find_one({"email": normalized_email})
+
+        if existing:
+            # Back-fill appwrite_id if missing (for existing OTP-registered users)
+            if not existing.get("appwrite_id"):
+                users.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {"appwrite_id": data.appwrite_id}},
+                )
+                existing["appwrite_id"] = data.appwrite_id
+            user_response = UserModel.user_response(existing)
+            user_response["role"] = existing.get("user-role", "user")
+            return {
+                "message": "User already exists",
+                "user": user_response,
+            }
+
+        now = datetime.now(timezone.utc)
+        user_doc = {
+            "email": normalized_email,
+            "name": normalized_name,
+            "user-role": "user",
+            "appwrite_id": data.appwrite_id,
+            "auth_provider": "google",
+            # OAuth users have no local password; mark explicitly so login_user is not used.
+            "password_hash": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        try:
+            result = users.insert_one(user_doc)
+            user_doc["_id"] = result.inserted_id
+            user_response = UserModel.user_response(user_doc)
+            user_response["role"] = "user"
+            return {
+                "message": "OAuth user created successfully",
+                "user": user_response,
+            }
+        except DuplicateKeyError:
+            # Race condition — another request inserted the same email; fetch and return.
+            existing = users.find_one({"email": normalized_email})
+            user_response = UserModel.user_response(existing)
+            user_response["role"] = existing.get("user-role", "user")
+            return {"message": "User already exists", "user": user_response}
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"An error occurred: {str(e)}",
+            )
+
+    @staticmethod
     def get_user_by_email(email: str):
         db = get_database()
         users = db["users"]
 
-        user = users.find_one({"email": email})
+        normalized_email = str(email).strip().lower()
+        user = users.find_one({"email": normalized_email})
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
 
-        return UserModel.user_response(user)
+        user_response = UserModel.user_response(user)
+        user_response["role"] = user.get("user-role", "user")
+        return user_response
 
     # @staticmethod
     # def login_user(data: LoginRequest):

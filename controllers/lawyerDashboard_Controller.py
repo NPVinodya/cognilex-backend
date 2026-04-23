@@ -6,6 +6,43 @@ from fastapi import HTTPException, status
 from config.cognilex_db import get_database
 
 
+def get_30_min_chunks(time_range: str) -> list:
+    """
+    Split a time range like '09:00 AM - 11:00 AM' or '09.00 AM - 11.00 AM' into 30-min chunks.
+    Example: ['09:00 AM - 09:30 AM', '09:30 AM - 10:00 AM', ...]
+    """
+    try:
+        # Normalize the time string (e.g. 09.00 -> 09:00)
+        t_range = time_range.replace(".", ":")
+        
+        if " - " not in t_range:
+            return [time_range]
+
+        start_str, end_str = [x.strip() for x in t_range.split(" - ")]
+        
+        # Determine the format based on the presence of ':'
+        fmt = "%I:%M %p"
+        
+        start_time = datetime.strptime(start_str, fmt)
+        end_time = datetime.strptime(end_str, fmt)
+
+        chunks = []
+        current = start_time
+        import datetime as dt_lib
+
+        while current < end_time:
+            next_t = current + dt_lib.timedelta(minutes=30)
+            if next_t > end_time:
+                break
+            # Use original punctuation if possible? No, standardizing to : is better
+            chunks.append(f"{current.strftime('%I:%M %p')} - {next_t.strftime('%I:%M %p')}")
+            current = next_t
+        return chunks
+    except Exception as e:
+        print(f"Error splitting time '{time_range}': {e}")
+        return [time_range]
+
+
 async def resolve_lawyer_id(db, input_id: str) -> ObjectId:
     """
     Resolve a User ID to a Lawyer Profile ID.
@@ -98,10 +135,31 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
             "location": doc.get("location", "Office"),
             "isBooked": doc.get("status") not in ["available", "pending_payment"],
             "clientName": doc.get("clientName", "Legal Client") if doc.get("status") != "available" else "Open Slot",
-            "type": doc.get("type", doc.get("appointment_type", "Consultation"))
+            "type": doc.get("type", doc.get("appointment_type", "Consultation")),
+            "parent_range": doc.get("parent_range")
         })
     
     return slots
+
+
+async def get_slot_by_id(slot_id: str) -> dict:
+    """Retrieve details of a single appointment slot."""
+    db = get_database()
+    if db is None:
+        return {}
+    
+    doc = db["appointments"].find_one({"_id": ObjectId(slot_id)})
+    if not doc:
+        return {}
+        
+    return {
+        "id": str(doc["_id"]),
+        "date": doc.get("date"),
+        "time": doc.get("time"),
+        "status": doc.get("status"),
+        "lawyer_id": str(doc.get("lawyer_id")),
+        "parent_range": doc.get("parent_range")
+    }
 
 async def get_all_lawyer_appointments(lawyer_id: str, status_filter: str = None) -> list:
     """Return all appointments for a lawyer with filtering."""
@@ -205,18 +263,37 @@ async def add_availability_slot(lawyer_id: str, date: str, time: str, location: 
     # Resolve the true Lawyer Profile ID (in case lawyer_id is a User ID)
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
 
-    slot = {
-        "lawyer_id": lawyer_obj_id,
-        "date": date,
-        "time": time,
-        "type": appointment_type,
-        "status": "available",
-        "location": location,
-        "created_at": datetime.utcnow()
-    }
+    # Automatic 30-min session splitting
+    time_chunks = get_30_min_chunks(time)
     
-    result = db["appointments"].insert_one(slot)
-    return {"success": True, "slot_id": str(result.inserted_id)}
+    if len(time_chunks) > 1:
+        slots_to_insert = []
+        for chunk in time_chunks:
+            slots_to_insert.append({
+                "lawyer_id": lawyer_obj_id,
+                "date": date,
+                "time": chunk,
+                "parent_range": time, # Store range for grouping on frontend
+                "type": appointment_type,
+                "status": "available",
+                "location": location,
+                "created_at": datetime.utcnow()
+            })
+        db["appointments"].insert_many(slots_to_insert)
+        return {"success": True, "message": f"Created {len(time_chunks)} sessions."}
+    else:
+        # Standard single slot
+        slot = {
+            "lawyer_id": lawyer_obj_id,
+            "date": date,
+            "time": time,
+            "type": appointment_type,
+            "status": "available",
+            "location": location,
+            "created_at": datetime.utcnow()
+        }
+        result = db["appointments"].insert_one(slot)
+        return {"success": True, "slot_id": str(result.inserted_id)}
 
 async def delete_availability_slot(slot_id: str) -> dict:
     db = get_database()
@@ -228,3 +305,84 @@ async def delete_availability_slot(slot_id: str) -> dict:
     if result.deleted_count > 0:
         return {"success": True}
     return {"success": False, "message": "Slot is already booked or not found."}
+
+async def get_lawyer_profile_settings(lawyer_id: str) -> dict:
+    """Fetch profile data specifically for the settings page."""
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database connection not available")
+
+    # Resolve the true Lawyer Profile ID (in case lawyer_id is a User ID)
+    lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+    
+    lawyer = db["lawyers"].find_one({"_id": lawyer_obj_id})
+    if not lawyer:
+        raise HTTPException(status_code=404, detail="Lawyer profile not found")
+
+    # Map to frontend settings shape
+    return {
+        "success": True,
+        "profile": {
+            "fullName": lawyer.get("fullName", ""),
+            "email": lawyer.get("email", ""),
+            "phone": lawyer.get("phone", ""),
+            "bio": lawyer.get("bio", ""),
+            "barCouncilNumber": lawyer.get("barCouncilNumber", ""),
+            "yearsOfExperience": lawyer.get("yearsOfExperience", 0),
+            "practiceAreas": lawyer.get("practiceAreas", []),
+            "consultationFee": lawyer.get("consultationFee", 0),
+            "province": lawyer.get("province", ""),
+            "profilePhotoUrl": lawyer.get("profilePhotoUrl", ""),
+            "location": lawyer.get("location", "Office")
+        }
+    }
+
+async def update_lawyer_profile(lawyer_id: str, update_data: dict) -> dict:
+    """Update lawyer profile information and sync with user collection if email changes."""
+    db = get_database()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database connection not available")
+
+    # Resolve the true Lawyer Profile ID
+    lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+    
+    # Get current profile for email comparison
+    current_profile = db["lawyers"].find_one({"_id": lawyer_obj_id})
+    if not current_profile:
+         raise HTTPException(status_code=404, detail="Lawyer profile not found")
+
+    # 1. Update Lawyer collection
+    # Only allow specific fields to be updated via this endpoint
+    allowed_fields = [
+        "fullName", "phone", "bio", "barCouncilNumber", 
+        "yearsOfExperience", "practiceAreas", "consultationFee", 
+        "province", "location", "email"
+    ]
+    
+    clean_update = {k: v for k, v in update_data.items() if k in allowed_fields}
+    
+    if not clean_update:
+        return {"success": False, "message": "No valid fields to update"}
+
+    db["lawyers"].update_one(
+        {"_id": lawyer_obj_id},
+        {"$set": clean_update}
+    )
+
+    # 2. Sync Email with User collection if it changed
+    if "email" in clean_update and clean_update["email"] != current_profile.get("email"):
+        old_email = current_profile.get("email")
+        new_email = clean_update["email"]
+        
+        # Check if new email is already taken in Users
+        if db["users"].find_one({"email": new_email}):
+             # Revert lawyer email update to maintain integrity if desired
+             db["lawyers"].update_one({"_id": lawyer_obj_id}, {"$set": {"email": old_email}})
+             raise HTTPException(status_code=400, detail="New email address is already in use by another account")
+
+        db["users"].update_one(
+            {"email": old_email},
+            {"$set": {"email": new_email, "name": clean_update.get("fullName", current_profile.get("fullName"))}}
+        )
+
+    return {"success": True, "message": "Profile updated successfully"}
