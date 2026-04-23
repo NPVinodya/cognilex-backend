@@ -11,7 +11,10 @@ from controllers.lawyerDashboard_Controller import (
     delete_availability_slot,
     get_slot_by_id,
     get_lawyer_profile_settings,
-    update_lawyer_profile
+    update_lawyer_profile,
+    finalize_appointment_booking,
+    get_lawyer_bookings,
+    get_lawyer_analytics
 )
 
 from controllers.user_controller import UserController
@@ -69,6 +72,25 @@ async def get_lawyer_documents_route(lawyer_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/{lawyer_id}/bookings")
+async def get_lawyer_bookings_route(lawyer_id: str, type: str = "list", clientEmail: str = None, lawyerId: str = None, period: str = "this-month"):
+    try:
+        # If lawyer_id in path is "dashboard", it means the ID was likely passed as a query param 'lawyerId'
+        # This fix is for compatibility with the frontend proxy call: /lawyer/dashboard/bookings?lawyerId=...
+        target_id = lawyerId if (lawyer_id == "dashboard" and lawyerId) else lawyer_id
+        
+        if type == "stats":
+            result = await get_lawyer_dashboard_stats(target_id)
+            return JSONResponse(status_code=200, content={"success": True, "stats": result})
+        elif type == "analytics":
+            result = await get_lawyer_analytics(target_id, period)
+            return JSONResponse(status_code=200, content=result)
+        else:
+            bookings = await get_lawyer_bookings(target_id, clientEmail)
+            return JSONResponse(status_code=200, content={"success": True, "bookings": bookings})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/slot")
 async def add_slot_route(lawyer_id: str, date: str, time: str, location: str = "Office", type: str = "Consultation"):
     try:
@@ -92,6 +114,25 @@ async def get_slot_route(slot_id: str):
         if not slot:
             raise HTTPException(status_code=404, detail="Slot not found")
         return JSONResponse(status_code=200, content={"success": True, "slot": slot})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/appointment/finalize")
+async def finalize_booking_route(data: dict):
+    try:
+        slot_id = data.get("slot_id")
+        payment_details = data.get("payment_details")
+        
+        if not slot_id or not payment_details:
+             raise HTTPException(status_code=400, detail="slot_id and payment_details are required")
+             
+        result = await finalize_appointment_booking(slot_id, payment_details)
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+            
+        return JSONResponse(status_code=200, content=result)
     except HTTPException:
         raise
     except Exception as e:

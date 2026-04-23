@@ -4,8 +4,75 @@ from fastapi import HTTPException, status
 
 from config.cognilex_db import get_database
 from config.jwt import create_access_token
+from datetime import datetime, timezone
 from models.user import UserModel
-from models.admin import AdminLoginRequest
+from models.admin import AdminLoginRequest, AdminCreateRequest, AdminResponse
+
+
+async def register_admin(data: AdminCreateRequest) -> Dict:
+    """Register a new administrator"""
+    try:
+        db = get_database()
+
+        if db is None:
+            raise Exception("Database connection not available")
+
+        admins_collection = db["admins"]
+
+        # Check if admin already exists
+        if admins_collection.find_one({"email": data.email}):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Administrator with this email already exists"
+            )
+
+        now = datetime.now(timezone.utc)
+        new_admin = {
+            "name": data.name,
+            "email": data.email,
+            "password_hash": UserModel.hash_password(data.password),
+            "added_by": data.added_by,
+            "created_at": now,
+            "user-role": "admin"
+        }
+
+        result = admins_collection.insert_one(new_admin)
+
+        return {
+            "success": True,
+            "message": "Administrator registered successfully",
+            "admin_id": str(result.inserted_id)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in register_admin: {str(e)}")
+        raise
+
+
+async def get_all_admins() -> Dict:
+    """Get all administrators"""
+    try:
+        db = get_database()
+
+        if db is None:
+            raise Exception("Database connection not available")
+
+        admins_collection = db["admins"]
+        admins = list(admins_collection.find())
+
+        for admin in admins:
+            admin["id"] = str(admin.pop("_id"))
+            admin.pop("password_hash", None)
+            admin.pop("password", None)
+
+        return {
+            "admins": admins,
+            "total": len(admins)
+        }
+    except Exception as e:
+        print(f"Error in get_all_admins: {str(e)}")
+        raise
 
 
 async def get_dashboard_stats() -> Dict:
@@ -161,16 +228,20 @@ async def login_admin(data: AdminLoginRequest) -> Dict:
             )
 
         if "password_hash" not in admin:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Password data not found in database",
-            )
-
-        if not UserModel.verify_password(data.password, admin["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-            )
+            # LEGACY FALLBACK: Check if there's a plain 'password' field
+            if "password" in admin and admin["password"] == data.password:
+                admin_role = admin.get("user-role", "admin")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password",
+                )
+        else:
+            if not UserModel.verify_password(data.password, admin["password_hash"]):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password",
+                )
 
         admin_role = admin.get("user-role", "admin")
         if admin_role != "admin":
@@ -207,3 +278,25 @@ async def login_admin(data: AdminLoginRequest) -> Dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
         )
+async def delete_admin(admin_id: str) -> Dict:
+    """Delete an administrator"""
+    try:
+        db = get_database()
+
+        if db is None:
+            raise Exception("Database connection not available")
+
+        admins_collection = db["admins"]
+
+        result = admins_collection.delete_one({"_id": ObjectId(admin_id)})
+
+        if result.deleted_count == 0:
+            raise ValueError("Administrator not found")
+
+        return {
+            "success": True,
+            "message": "Administrator deleted successfully"
+        }
+    except Exception as e:
+        print(f"Error in delete_admin: {str(e)}")
+        raise
