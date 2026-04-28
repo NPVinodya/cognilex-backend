@@ -10,31 +10,65 @@ RAG_API_URL/ask and relays the full response back to the frontend.
 
 import os
 import logging
-from typing import Dict
+import uuid
+from datetime import datetime, timezone
+from typing import Dict, List
 
 import httpx
 from fastapi import HTTPException, status
 from dotenv import load_dotenv
 
 from models.chat import ChatRequest
+from config.cognilex_db import get_database
 
 load_dotenv()
 
 logger = logging.getLogger("chat_controller")
 
 # ── RAG service URL ────────────────────────────────────────────────────────────
-# Set RAG_API_URL in .env  (e.g. http://localhost:8001  or  http://168.144.103.11:8001)
 RAG_API_URL: str = os.getenv("RAG_API_URL", "http://localhost:8001")
 
 
 async def ask_rag(request: ChatRequest) -> Dict:
     """
     Forward a chat question to the CogniLex RAG service and return its response.
-
-    RAG endpoint: POST {RAG_API_URL}/ask
-    RAG request body : { question: str, user_id: str }
-    RAG response body: { answer: str, mode: str, sources: list[str], latency: str }
+    Also persists the interaction to MongoDB.
     """
+    db = get_database()
+    print(f"[DEBUG] ask_rag: user_id={request.user_id}, session_id={request.session_id}")
+    
+    # 1. Handle Session
+    session_id = request.session_id
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        print(f"[DEBUG] Creating new session: {session_id}")
+        # Create a new session document
+        session_doc = {
+            "id": session_id,
+            "user_id": request.user_id or "guest_user",
+            "title": request.question[:40] + ("..." if len(request.question) > 40 else ""),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        db.chat_sessions.insert_one(session_doc)
+    else:
+        print(f"[DEBUG] Using existing session: {session_id}")
+        # Update existing session timestamp
+        db.chat_sessions.update_one(
+            {"id": session_id},
+            {"$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+
+    # 2. Save User Message
+    user_msg = {
+        "session_id": session_id,
+        "role": "user",
+        "content": request.question.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    db.chat_messages.insert_one(user_msg)
+    print(f"[DEBUG] User message saved to session {session_id}")
+
     payload = {
         "question": request.question.strip(),
         "user_id": request.user_id or "guest_user",
@@ -48,7 +82,6 @@ async def ask_rag(request: ChatRequest) -> Dict:
                 headers={"Content-Type": "application/json"},
             )
 
-        # ── Relay non-2xx errors from RAG as 502 Bad Gateway ──────────────────
         if rag_response.status_code != 200:
             error_body = {}
             try:
@@ -68,10 +101,27 @@ async def ask_rag(request: ChatRequest) -> Dict:
             )
 
         data = rag_response.json()
+        
+        # 3. Save Bot Response
+        bot_msg = {
+            "session_id": session_id,
+            "role": "bot",
+            "content": data.get("answer", ""),
+            "sources": data.get("sources", []),
+            "latency": data.get("latency", ""),
+            "mode": data.get("mode", "Standard"),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        db.chat_messages.insert_one(bot_msg)
+        print(f"[DEBUG] Bot response saved to session {session_id}")
+
+        # Add session_id to response for frontend
+        data["session_id"] = session_id
+        
         logger.info(
             f"RAG response: user_id={payload['user_id']} "
-            f"latency={data.get('latency', 'N/A')} "
-            f"mode={data.get('mode', 'N/A')}"
+            f"session_id={session_id} "
+            f"latency={data.get('latency', 'N/A')}"
         )
         return data
 
@@ -88,10 +138,47 @@ async def ask_rag(request: ChatRequest) -> Dict:
             detail="RAG service took too long to respond. Please try again.",
         )
     except HTTPException:
-        raise  # re-raise FastAPI exceptions as-is
+        raise
     except Exception as e:
         logger.exception(f"Unexpected error calling RAG service: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while processing your request.",
         )
+
+
+async def get_sessions(user_id: str) -> List[Dict]:
+    """Fetch all chat sessions for a specific user from MongoDB."""
+    print(f"[DEBUG] get_sessions for user_id={user_id}")
+    db = get_database()
+    sessions = list(db.chat_sessions.find({"user_id": user_id}).sort("updated_at", -1))
+    print(f"[DEBUG] Found {len(sessions)} sessions")
+    return [{"id": s["id"], "title": s["title"], "updated_at": s["updated_at"]} for s in sessions]
+
+
+async def get_session_history(session_id: str) -> List[Dict]:
+    """Fetch all messages for a specific chat session from MongoDB."""
+    print(f"[DEBUG] get_session_history for session_id={session_id}")
+    db = get_database()
+    messages = list(db.chat_messages.find({"session_id": session_id}).sort("created_at", 1))
+    print(f"[DEBUG] Found {len(messages)} messages")
+    return [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "created_at": m["created_at"],
+            "sources": m.get("sources"),
+            "latency": m.get("latency"),
+            "mode": m.get("mode")
+        } for m in messages
+    ]
+
+
+async def update_session_title(session_id: str, new_title: str):
+    """Update the title of a specific chat session in MongoDB."""
+    db = get_database()
+    db.chat_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"title": new_title, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    print(f"[DEBUG] Session {session_id} renamed to: {new_title}")

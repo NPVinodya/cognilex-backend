@@ -43,4 +43,12 @@ class AdminResponse(BaseModel):
     added_by: str
     created_at: Any
 
+class AdminUpdateRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+class AdminPasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
 
