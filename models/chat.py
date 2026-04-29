@@ -10,6 +10,8 @@ class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, description="The user's legal question")
     user_id: Optional[str] = Field(default="guest_user", description="User identifier for RAG session memory")
     session_id: Optional[str] = Field(default=None, description="The unique ID for the chat session")
+    mode: Optional[str] = Field(default=None, description="Legal or research mode")
+    use_query_engine: Optional[bool] = Field(default=False, description="Use stateless query engine")
 
 
 class ChatResponse(BaseModel):
