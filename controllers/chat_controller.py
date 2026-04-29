@@ -12,7 +12,7 @@ import os
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException, status
@@ -36,7 +36,7 @@ async def ask_rag(request: ChatRequest) -> Dict:
     """
     db = get_database()
     print(f"[DEBUG] ask_rag: user_id={request.user_id}, session_id={request.session_id}")
-    
+
     # 1. Handle Session
     session_id = request.session_id
     if not session_id:
@@ -69,17 +69,47 @@ async def ask_rag(request: ChatRequest) -> Dict:
     db.chat_messages.insert_one(user_msg)
     print(f"[DEBUG] User message saved to session {session_id}")
 
+    # Normalize mode value that may have been supplied by the frontend.
+    def _normalize_mode(m: str | None) -> Optional[str]:
+        if not m:
+            return None
+        m_low = m.strip().lower()
+        if m_low in ("research", "case", "cases", "judgment", "judgement"):
+            return "research"
+        if m_low in ("legal", "act", "acts", "statute", "statutes"):
+            return "legal"
+        # If it's already one of the expected values, pass through; otherwise None
+        if m_low in ("legal", "research"):
+            return m_low
+        return None
+
+    normalized_mode = _normalize_mode(getattr(request, "mode", None))
+
+    # Build payload for the external RAG (ragtwo) HTTP service. We include
+    # session_id so the RAG service can optionally correlate conversations
+    # and the parsed `mode` so ragtwo can pick the correct engine without
+    # re-detecting if the frontend already provided it.
     payload = {
         "question": request.question.strip(),
         "user_id": request.user_id or "guest_user",
+        "session_id": session_id,
     }
+    if normalized_mode:
+        payload["mode"] = normalized_mode
+    # Forward any stateless flag if frontend provided it (use_query_engine)
+    use_query_flag = getattr(request, "use_query_engine", None)
+    if use_query_flag is not None:
+        try:
+            payload["use_query_engine"] = bool(use_query_flag)
+        except Exception:
+            payload["use_query_engine"] = False
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             rag_response = await client.post(
                 f"{RAG_API_URL}/ask",
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
             )
 
         if rag_response.status_code != 200:
@@ -101,15 +131,17 @@ async def ask_rag(request: ChatRequest) -> Dict:
             )
 
         data = rag_response.json()
-        
+
         # 3. Save Bot Response
+        # Persist the bot reply we received from the RAG service. Ensure the
+        # stored mode is one of the expected values (fallback to 'legal').
         bot_msg = {
             "session_id": session_id,
             "role": "bot",
             "content": data.get("answer", ""),
             "sources": data.get("sources", []),
             "latency": data.get("latency", ""),
-            "mode": data.get("mode", "Standard"),
+            "mode": data.get("mode") if data.get("mode") in ("legal", "research") else (normalized_mode or data.get("mode") or "legal"),
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         db.chat_messages.insert_one(bot_msg)
@@ -117,7 +149,7 @@ async def ask_rag(request: ChatRequest) -> Dict:
 
         # Add session_id to response for frontend
         data["session_id"] = session_id
-        
+
         logger.info(
             f"RAG response: user_id={payload['user_id']} "
             f"session_id={session_id} "
