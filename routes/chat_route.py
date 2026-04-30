@@ -2,14 +2,20 @@
 routes/chat_route.py — REST API routes for the CogniLex AI chat.
 
 Registered prefix: /chat
-Full endpoint exposed: POST /chat/ask
+Full endpoints exposed:
+  POST /chat/ask         — authenticated user chat
+  POST /chat/guest_mode  — guest mode (unauthenticated)
+  GET  /chat/sessions    — get all sessions for a user
+  GET  /chat/history     — get message history for a session
+  PATCH /chat/session/{session_id}/title — rename a session
+  GET  /chat/health      — health check
 """
 
 from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from controllers.chat_controller import ask_rag, get_session_history, get_sessions, update_session_title
+from controllers.chat_controller import ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title
 from models.chat import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -34,6 +40,28 @@ async def chat_ask(request: ChatRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat processing error: {str(e)}",
+        )
+
+
+@router.post(
+    "/guest_mode",
+    response_model=ChatResponse,
+    summary="Guest mode chat (unauthenticated)",
+    description=(
+        "Allows unauthenticated users to chat with CogniLex AI without logging in. "
+        "Uses meta-llama/llama-4-scout-17b-16e-instruct for direct conversational response "
+        "(no document retrieval). Supports multilingual input."
+    ),
+)
+async def chat_guest_mode(request: ChatRequest):
+    try:
+        return await guest_mode_chat(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Guest mode processing error: {str(e)}",
         )
 
 
