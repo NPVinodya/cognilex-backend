@@ -1,0 +1,45 @@
+name: CD - Deploy API to DigitalOcean Droplet
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to DigitalOcean Droplet
+    runs-on: Ubuntu 22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+      - name: Deploy to Server
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+          deploy@${{ secrets.SERVER_HOST }} << 'EOF'
+            
+            set -e
+            echo "🚀 Starting deployment..."
+
+            cd /var/www/cognilex-backend
+
+            echo "📦 Pulling latest code"
+            git pull origin main
+
+            echo "🐍 Activating virtualenv"
+            source venv/bin/activate
+          
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            echo "🔁 Restarting FastAPI service"
+            sudo systemctl restart rag
+
+            echo "✅ Deployment completed successfully"
+          EOF
