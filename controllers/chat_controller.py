@@ -214,3 +214,88 @@ async def update_session_title(session_id: str, new_title: str):
         {"$set": {"title": new_title, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     print(f"[DEBUG] Session {session_id} renamed to: {new_title}")
+
+
+async def guest_mode_chat(request: ChatRequest) -> Dict:
+    """
+    Forward a guest mode question to the CogniLex RAG service's /guest_mode endpoint.
+    
+    This is used for unauthenticated users accessing the guest chat on the homepage.
+    No session or user tracking is required.
+    Uses meta-llama/llama-4-scout-17b-16e-instruct for direct LLM response (no RAG).
+    """
+    db = get_database()
+    print(f"[DEBUG] guest_mode_chat: question='{request.question[:50]}...'")
+
+    # Log the guest interaction to MongoDB for analytics (optional)
+    guest_log = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "role": "guest",
+        "question": request.question.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    try:
+        db.guest_interactions.insert_one(guest_log)
+    except Exception as e:
+        logger.warning(f"Failed to log guest interaction: {e}")
+
+    # Build payload for the RAG /guest_mode endpoint
+    payload = {
+        "question": request.question.strip(),
+        "user_id": "guest_user",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            rag_response = await client.post(
+                f"{RAG_API_URL}/guest_mode",
+                json=payload,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+            )
+
+        if rag_response.status_code != 200:
+            error_body = {}
+            try:
+                error_body = rag_response.json()
+            except Exception:
+                pass
+
+            detail = (
+                error_body.get("detail")
+                or error_body.get("message")
+                or f"RAG service returned HTTP {rag_response.status_code}"
+            )
+            logger.error(f"RAG guest_mode service error: {rag_response.status_code} — {detail}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=detail,
+            )
+
+        data = rag_response.json()
+
+        logger.info(
+            f"RAG guest_mode response: "
+            f"latency={data.get('latency', 'N/A')}"
+        )
+        return data
+
+    except httpx.ConnectError:
+        logger.error(f"Cannot connect to RAG service at {RAG_API_URL}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"RAG service is unreachable at {RAG_API_URL}. Is the RAG server running?",
+        )
+    except httpx.TimeoutException:
+        logger.error("RAG guest_mode request timed out")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="RAG service took too long to respond. Please try again.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error calling RAG guest_mode service: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing your request.",
+        )
