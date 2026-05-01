@@ -16,7 +16,7 @@ from typing import Dict, List
 from fastapi import APIRouter, HTTPException, Query, status
 
 from controllers.chat_controller import ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title
-from models.chat import ChatRequest, ChatResponse
+from models.chat import ChatRequest, ChatResponse, MessageModel
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -83,7 +83,7 @@ async def fetch_sessions(user_id: str = Query(..., description="The user's email
 
 @router.get(
     "/history",
-    response_model=Dict[str, List[Dict]],
+    response_model=Dict[str, List[MessageModel]],
     summary="Get message history for a session",
 )
 async def fetch_history(session_id: str = Query(..., description="The unique session ID")):

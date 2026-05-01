@@ -132,6 +132,12 @@ async def ask_rag(request: ChatRequest) -> Dict:
 
         data = rag_response.json()
 
+        # Ensure expected keys exist and have safe types for the frontend/schema
+        data["sources"] = data.get("sources", []) or []
+        data["related_cases"] = data.get("related_cases", []) or []
+        data["latency"] = data.get("latency", "")
+        data["mode"] = data.get("mode") or (normalized_mode or "legal")
+
         # 3. Save Bot Response
         # Persist the bot reply we received from the RAG service. Ensure the
         # stored mode is one of the expected values (fallback to 'legal').
@@ -140,6 +146,8 @@ async def ask_rag(request: ChatRequest) -> Dict:
             "role": "bot",
             "content": data.get("answer", ""),
             "sources": data.get("sources", []),
+            # related_cases may be a list of dicts with metadata about similar cases
+            "related_cases": data.get("related_cases", []),
             "latency": data.get("latency", ""),
             "mode": data.get("mode") if data.get("mode") in ("legal", "research") else (normalized_mode or data.get("mode") or "legal"),
             "created_at": datetime.now(timezone.utc).isoformat()
@@ -201,7 +209,8 @@ async def get_session_history(session_id: str) -> List[Dict]:
             "created_at": m["created_at"],
             "sources": m.get("sources"),
             "latency": m.get("latency"),
-            "mode": m.get("mode")
+            "mode": m.get("mode"),
+            "related_cases": m.get("related_cases", [])
         } for m in messages
     ]
 
@@ -272,6 +281,29 @@ async def guest_mode_chat(request: ChatRequest) -> Dict:
             )
 
         data = rag_response.json()
+
+        # Normalize fields so frontend and schemas always receive consistent types
+        data["sources"] = data.get("sources", []) or []
+        data["related_cases"] = data.get("related_cases", []) or []
+        data["latency"] = data.get("latency", "")
+        data["mode"] = data.get("mode") or "research"
+
+        # Persist the bot reply for guest interactions for analytics/debugging
+        guest_response = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "role": "bot",
+            "question": request.question.strip(),
+            "answer": data.get("answer", ""),
+            "sources": data.get("sources", []),
+            "related_cases": data.get("related_cases", []),
+            "latency": data.get("latency", ""),
+            "mode": data.get("mode", ""),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        try:
+            db.guest_interactions.insert_one(guest_response)
+        except Exception as e:
+            logger.warning(f"Failed to persist guest response: {e}")
 
         logger.info(
             f"RAG guest_mode response: "
