@@ -12,7 +12,7 @@ import os
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import httpx
 from fastapi import HTTPException, status
@@ -331,3 +331,125 @@ async def guest_mode_chat(request: ChatRequest) -> Dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while processing your request.",
         )
+
+
+# ── Share Chat Functions ──────────────────────────────────────────────────────
+
+async def create_share(session_id: str) -> Dict:
+    """
+    Generate a unique share_id for the given chat session and persist it.
+    Returns { share_id }. Idempotent — re-sharing the same session returns
+    the existing share_id if one already exists.
+    """
+    db = get_database()
+    session = db.chat_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+
+    # Reuse existing share_id if already shared
+    existing_share_id = session.get("share_id")
+    if existing_share_id:
+        logger.info(f"[create_share] Session {session_id} already shared as {existing_share_id}")
+        return {"share_id": existing_share_id}
+
+    share_id = str(uuid.uuid4())
+    db.chat_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"share_id": share_id, "shared_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    logger.info(f"[create_share] Session {session_id} shared as {share_id}")
+    return {"share_id": share_id}
+
+
+async def get_shared_chat(share_id: str) -> Dict:
+    """
+    Fetch the session and its messages for the given share_id.
+    Returns { title, sharedBy, messages[] }. No auth required.
+    """
+    db = get_database()
+    session = db.chat_sessions.find_one({"share_id": share_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shared chat '{share_id}' not found or link is invalid.",
+        )
+
+    session_id = session["id"]
+    messages_raw = list(
+        db.chat_messages.find({"session_id": session_id}).sort("created_at", 1)
+    )
+    messages = [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "created_at": m["created_at"],
+            "sources": m.get("sources", []),
+            "related_cases": m.get("related_cases", []),
+            "latency": m.get("latency"),
+            "mode": m.get("mode"),
+        }
+        for m in messages_raw
+    ]
+
+    return {
+        "title": session.get("title", "Untitled Legal Chat"),
+        "sharedBy": session.get("user_id", "Unknown"),
+        "sharedAt": session.get("shared_at", session.get("updated_at", "")),
+        "messages": messages,
+    }
+
+
+async def save_shared_chat(share_id: str, new_user_id: str) -> Dict:
+    """
+    Clone the shared chat session into a brand-new session owned by new_user_id.
+    Returns { new_session_id }.
+    """
+    db = get_database()
+    session = db.chat_sessions.find_one({"share_id": share_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shared chat '{share_id}' not found.",
+        )
+
+    # Fetch original messages
+    original_messages: List[Any] = list(
+        db.chat_messages.find({"session_id": session["id"]}).sort("created_at", 1)
+    )
+
+    # Create new session
+    new_session_id = str(uuid.uuid4())
+    new_session = {
+        "id": new_session_id,
+        "user_id": new_user_id,
+        "title": f"[Saved] {session.get('title', 'Shared Chat')}",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    db.chat_sessions.insert_one(new_session)
+
+    # Clone messages under new session_id
+    if original_messages:
+        cloned_messages = []
+        for m in original_messages:
+            cloned = {
+                "session_id": new_session_id,
+                "role": m.get("role", "user"),
+                "content": m.get("content", ""),
+                "created_at": m.get("created_at", datetime.now(timezone.utc).isoformat()),
+                "sources": m.get("sources", []),
+                "related_cases": m.get("related_cases", []),
+                "latency": m.get("latency"),
+                "mode": m.get("mode"),
+            }
+            cloned_messages.append(cloned)
+        db.chat_messages.insert_many(cloned_messages)
+
+    logger.info(
+        f"[save_shared_chat] share_id={share_id} cloned to session={new_session_id} "
+        f"for user={new_user_id} ({len(original_messages)} messages)"
+    )
+    return {"new_session_id": new_session_id}
