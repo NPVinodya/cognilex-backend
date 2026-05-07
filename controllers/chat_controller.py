@@ -225,6 +225,23 @@ async def update_session_title(session_id: str, new_title: str):
     print(f"[DEBUG] Session {session_id} renamed to: {new_title}")
 
 
+async def delete_session(session_id: str) -> Dict:
+    """Delete a chat session and all its messages from MongoDB."""
+    db = get_database()
+    session = db.chat_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    # Delete all messages belonging to this session
+    msg_result = db.chat_messages.delete_many({"session_id": session_id})
+    # Delete the session itself
+    db.chat_sessions.delete_one({"id": session_id})
+    print(f"[DEBUG] Deleted session {session_id} and {msg_result.deleted_count} messages")
+    return {"deleted": True, "messages_removed": msg_result.deleted_count}
+
+
 async def guest_mode_chat(request: ChatRequest) -> Dict:
     """
     Forward a guest mode question to the CogniLex RAG service's /guest_mode endpoint.
