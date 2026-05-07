@@ -35,6 +35,7 @@ app.add_middleware(
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://www.cognilex.systems","https://cognilex.systems"],
     allow_credentials=True,
     allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
