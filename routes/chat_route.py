@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from controllers.chat_controller import (
     ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title,
-    create_share, get_shared_chat, save_shared_chat,
+    create_share, get_shared_chat, save_shared_chat, delete_session,
 )
 from models.chat import ChatRequest, ChatResponse, MessageModel
 
@@ -113,6 +113,22 @@ async def chat_rename(session_id: str, title: str = Query(..., description="The 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error renaming session: {str(e)}",
+        )
+
+
+@router.delete(
+    "/session/{session_id}",
+    summary="Delete a chat session and all its messages",
+)
+async def chat_delete_session(session_id: str):
+    try:
+        return await delete_session(session_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting session: {str(e)}",
         )
 
 
