@@ -14,6 +14,7 @@ from routes.lawyerDashboard_route import router as lawyer_dashboard_router
 from routes.appointment_route import router as appointment_router
 from routes.feedback_route import router as feedback_router
 from routes.chat_route import router as chat_router
+from routes.message_route import router as message_router
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ app.include_router(lawyer_dashboard_router)
 app.include_router(appointment_router)
 app.include_router(feedback_router)
 app.include_router(chat_router)
+app.include_router(message_router)
 
 
 @app.get("/")

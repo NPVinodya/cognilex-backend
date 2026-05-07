@@ -2,7 +2,7 @@
 models/chat.py — Pydantic schemas for the Chat API
 """
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 class ChatRequest(BaseModel):
@@ -18,7 +18,8 @@ class ChatResponse(BaseModel):
     """Response relayed back from the RAG engine."""
     answer: str
     mode: str
-    sources: List[str] = []
+    sources: List[str] = Field(default_factory=list)
+    related_cases: Optional[List[Dict]] = Field(default_factory=list)
     latency: Optional[str] = None
     session_id: Optional[str] = None
 
@@ -31,6 +32,7 @@ class MessageModel(BaseModel):
     sources: Optional[List[str]] = None
     latency: Optional[str] = None
     mode: Optional[str] = None
+    related_cases: Optional[List[Dict]] = None
 
 
 class SessionModel(BaseModel):
