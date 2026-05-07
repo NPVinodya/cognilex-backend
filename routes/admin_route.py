@@ -16,7 +16,8 @@ from controllers.admin_Controller import (
     update_platform_settings,
     get_admin_preferences,
     update_admin_preferences,
-    get_financial_stats
+    get_financial_stats,
+    get_user_analytics
 )
 from models.admin import ApprovalRequest, AdminLoginRequest, AdminCreateRequest
 
@@ -180,5 +181,13 @@ async def get_finance_stats(period: str = Query("daily")):
     """Get platform financial statistics with period support"""
     try:
         return await get_financial_stats(period)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/analytics")
+async def get_analytics(period: str = Query("daily")):
+    """Get detailed user interaction and message analytics"""
+    try:
+        return await get_user_analytics(period)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -14,9 +14,13 @@ Full endpoints exposed:
 from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 
-from controllers.chat_controller import ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title
-from models.chat import ChatRequest, ChatResponse
+from controllers.chat_controller import (
+    ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title,
+    create_share, get_shared_chat, save_shared_chat,
+)
+from models.chat import ChatRequest, ChatResponse, MessageModel
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -83,7 +87,7 @@ async def fetch_sessions(user_id: str = Query(..., description="The user's email
 
 @router.get(
     "/history",
-    response_model=Dict[str, List[Dict]],
+    response_model=Dict[str, List[MessageModel]],
     summary="Get message history for a session",
 )
 async def fetch_history(session_id: str = Query(..., description="The unique session ID")):
@@ -124,3 +128,66 @@ async def chat_health():
         "rag_service": "local",
         "rag_url": "in-process",
     }
+
+
+# ── Share Chat Routes ─────────────────────────────────────────────────────────
+
+class ShareRequest(BaseModel):
+    session_id: str
+
+class SaveShareRequest(BaseModel):
+    user_id: str
+
+
+@router.post(
+    "/share",
+    summary="Create a shareable link for a chat session",
+    description=(
+        "Generates (or retrieves) a unique share_id for the given session. "
+        "Subsequent calls with the same session_id return the same share_id (idempotent)."
+    ),
+)
+async def chat_create_share(body: ShareRequest):
+    try:
+        return await create_share(body.session_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating share: {str(e)}",
+        )
+
+
+@router.get(
+    "/share/{share_id}",
+    summary="Fetch a shared chat by its share_id",
+    description="Public endpoint — returns the session title and all messages. No auth required.",
+)
+async def chat_get_share(share_id: str):
+    try:
+        return await get_shared_chat(share_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching shared chat: {str(e)}",
+        )
+
+
+@router.post(
+    "/share/{share_id}/save",
+    summary="Save a shared chat as a new session",
+    description="Clones all messages from the shared session into a new session owned by the requesting user.",
+)
+async def chat_save_share(share_id: str, body: SaveShareRequest):
+    try:
+        return await save_shared_chat(share_id, body.user_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving shared chat: {str(e)}",
+        )

@@ -119,3 +119,61 @@ def mark_as_paid(appointment_id: str, db=Depends(get_database)):
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     return {"success": True, "message": "Payment verified and appointment confirmed."}
+
+
+@router.get("/client")
+def get_client_appointments(email: str, db=Depends(get_database)):
+    # Find user by email to get their _id
+    user = db["users"].find_one({"email": email})
+    user_id = user["_id"] if user else None
+
+    # Find appointments that belong to this client
+    query = {
+        "status": {"$nin": ["available", "pending_payment"]},
+        "$or": [
+            {"email": email},
+            {"clientEmail": email},
+            {"client_email": email}
+        ]
+    }
+    
+    if user_id:
+        query["$or"].extend([
+            {"client_id": user_id},
+            {"client_id": str(user_id)}
+        ])
+
+    cursor = db["appointments"].find(query).sort([("date", -1)])
+    
+    appointments = []
+    count = 0
+    for doc in cursor:
+        count += 1
+        # Fetch lawyer details
+        lawyer = None
+        if "lawyer_id" in doc:
+            lawyer = db["lawyers"].find_one({"_id": doc["lawyer_id"]})
+            
+        # Map status to frontend status
+        raw_status = doc.get("status", "pending")
+        display_status = "Pending"
+        if raw_status == "booked":
+            display_status = "Confirmed"
+        elif raw_status == "canceled":
+            display_status = "Canceled"
+        elif raw_status == "completed":
+            display_status = "Completed"
+            
+        appointments.append({
+            "id": str(doc["_id"]),
+            "lawyerName": lawyer.get("fullName", "Unknown Lawyer") if lawyer else "Unknown Lawyer",
+            "lawyerImage": lawyer.get("profilePhotoUrl", "") if lawyer else "",
+            "type": doc.get("type", doc.get("appointment_type", "Consultation")),
+            "date": doc.get("date"),
+            "time": doc.get("time"),
+            "location": doc.get("location", "Virtual Consultation"),
+            "status": display_status
+        })
+        
+    print(f"[Backend] Fetched {count} appointments for client: {email}")
+    return {"success": True, "appointments": appointments}
