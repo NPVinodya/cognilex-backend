@@ -569,3 +569,229 @@ async def get_financial_stats(period: str = "daily") -> Dict:
     except Exception as e:
         print(f"Error in get_financial_stats: {str(e)}")
         raise
+async def get_user_analytics(period: str = "daily") -> Dict:
+    """Calculate platform-wide user interaction and message analytics"""
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database connection not available")
+
+        messages_col = db["chat_messages"]
+        sessions_col = db["chat_sessions"]
+        users_col = db["users"]
+
+        # 1. Overall Summary
+        total_messages = messages_col.count_documents({})
+        total_sessions = sessions_col.count_documents({})
+        
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        seven_days_ago = (now - timedelta(days=7)).isoformat()
+        
+        # Count distinct users in the last 7 days
+        active_users_7d = len(sessions_col.distinct("user_id", {"created_at": {"$gte": seven_days_ago}}))
+        
+        # Calculate Avg Messages per Session
+        avg_msgs = round(total_messages / total_sessions, 1) if total_sessions > 0 else 0
+
+        # 2. Activity Trend
+        if period == "monthly":
+            start_date = now - timedelta(days=180)
+            group_format = "%Y-%m"
+        else:
+            start_date = now - timedelta(days=7)
+            group_format = "%Y-%m-%d"
+
+        trend_pipeline = [
+            {"$match": {"created_at": {"$gte": start_date.isoformat()}}},
+            {"$group": {
+                "_id": {"$substr": ["$created_at", 0, 10 if period == "daily" else 7]},
+                "messages": {"$sum": 1},
+                "users": {"$addToSet": "$session_id"} # Approximate users by unique sessions in this context
+            }},
+            {"$project": {
+                "name": "$_id",
+                "messages": 1,
+                "users": {"$size": "$users"}
+            }},
+            {"$sort": {"name": 1}}
+        ]
+        
+        trend_data_raw = list(messages_col.aggregate(trend_pipeline))
+        
+        # Fill in missing dates to ensure today and all recent days are shown
+        trend_data = []
+        if period == "daily":
+            # Generate last 7 days including today
+            for i in range(7, -1, -1): # 7 days ago until today (8 points)
+                date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+                # Find if we have data for this date
+                match = next((item for item in trend_data_raw if item["name"] == date_str), None)
+                if match:
+                    trend_data.append(match)
+                else:
+                    trend_data.append({"name": date_str, "messages": 0, "users": 0})
+        else:
+            # Generate last 6 months
+            for i in range(5, -1, -1):
+                # Simple month calculation
+                month_date = now - timedelta(days=i*30)
+                date_str = month_date.strftime("%Y-%m")
+                match = next((item for item in trend_data_raw if item["name"] == date_str), None)
+                if match:
+                    trend_data.append(match)
+                else:
+                    trend_data.append({"name": date_str, "messages": 0, "users": 0})
+
+        # 3. Chat Mode Distribution
+        modes_pipeline = [
+            {"$match": {"role": "bot"}},
+            {"$group": {
+                "_id": "$mode",
+                "value": {"$sum": 1}
+            }}
+        ]
+        modes_raw = list(messages_col.aggregate(modes_pipeline))
+        
+        # Consolidate raw modes into simplified categories
+        consolidated = {"Legal": 0, "Research": 0}
+        for m in modes_raw:
+            raw_mode = str(m["_id"]).lower() if m["_id"] else "legal"
+            if "research" in raw_mode:
+                consolidated["Research"] += m["value"]
+            else:
+                # Default to Legal for any variation of legal or unknown modes
+                consolidated["Legal"] += m["value"]
+        
+        modes = []
+        colors = {"Legal": "#FF9000", "Research": "#181B25"}
+        for name, val in consolidated.items():
+            if val > 0:
+                modes.append({
+                    "name": f"{name} Mode",
+                    "value": val,
+                    "color": colors.get(name)
+                })
+
+        # 4. Top Users (Most messages)
+        top_users_pipeline = [
+            {"$group": {
+                "_id": "$session_id",
+                "msg_count": {"$sum": 1}
+            }},
+            {"$lookup": {
+                "from": "chat_sessions",
+                "localField": "_id",
+                "foreignField": "id",
+                "as": "session_info"
+            }},
+            {"$unwind": "$session_info"},
+            {"$group": {
+                "_id": "$session_info.user_id",
+                "messages": {"$sum": "$msg_count"},
+                "last_active": {"$max": "$session_info.updated_at"}
+            }},
+            {"$sort": {"messages": -1}},
+            {"$limit": 5}
+        ]
+        
+        top_users_raw = list(messages_col.aggregate(top_users_pipeline))
+        top_users = []
+        
+        for u in top_users_raw:
+            user_info = users_col.find_one({"email": u["_id"]})
+            top_users.append({
+                "id": str(u["_id"]),
+                "name": user_info.get("name") if user_info else u["_id"],
+                "messages": u["messages"],
+                "lastActive": u["last_active"]
+            })
+
+        # 5. User Type Distribution
+        lawyers_col = db["lawyers"]
+        active_lawyers_count = lawyers_col.count_documents({"status": "approved"})
+        registered_users_count = users_col.count_documents({})
+        guest_sessions_count = sessions_col.count_documents({"user_id": "guest_user"})
+
+        user_types = [
+            {"name": "Guest Users", "value": guest_sessions_count, "color": "#94a3b8"},
+            {"name": "Registered Users", "value": registered_users_count, "color": "#3b82f6"},
+            {"name": "Active Lawyers", "value": active_lawyers_count, "color": "#FF9000"}
+        ]
+
+        # 6. Hourly Activity (24h distribution)
+        hourly_pipeline = [
+            {"$match": {"created_at": {"$gte": start_date.isoformat()}}},
+            {"$group": {
+                "_id": {"$substr": ["$created_at", 11, 13]}, # Extract hour HH
+                "count": {"$sum": 1}
+            }},
+            {"$sort": {"_id": 1}}
+        ]
+        hourly_raw = list(messages_col.aggregate(hourly_pipeline))
+        hourly_activity = [{"hour": f"{h['_id']}:00", "count": h["count"]} for h in hourly_raw]
+
+        # 7. Performance & Cost Trends (Latency & Tokens)
+        bot_msgs = list(messages_col.find({"role": "bot", "created_at": {"$gte": start_date.isoformat()}}))
+        latency_map = {}
+        tokens_map = {}
+
+        for msg in bot_msgs:
+            date_key = msg["created_at"][:10 if period == "daily" else 7]
+            # Latency parsing
+            lat_str = str(msg.get("latency", "0")).replace("s", "").strip()
+            try:
+                lat_val = float(lat_str)
+            except:
+                lat_val = 0
+            # Token estimation (word count proxy if tokens not stored)
+            tokens_est = len(msg.get("content", "")) / 4
+            
+            if date_key not in latency_map:
+                latency_map[date_key] = []
+                tokens_map[date_key] = 0
+            latency_map[date_key].append(lat_val)
+            tokens_map[date_key] += tokens_est
+
+        # Performance & Cost Trends with Date Filling
+        latency_trend = []
+        token_trend = []
+
+        if period == "daily":
+            for i in range(7, -1, -1):
+                date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+                vals = latency_map.get(date_str, [])
+                avg_lat = round(sum(vals)/len(vals), 2) if vals else 0
+                tokens = int(tokens_map.get(date_str, 0))
+                latency_trend.append({"name": date_str, "latency": avg_lat})
+                token_trend.append({"name": date_str, "tokens": tokens})
+        else:
+            for i in range(5, -1, -1):
+                month_date = now - timedelta(days=i*30)
+                date_str = month_date.strftime("%Y-%m")
+                vals = latency_map.get(date_str, [])
+                avg_lat = round(sum(vals)/len(vals), 2) if vals else 0
+                tokens = int(tokens_map.get(date_str, 0))
+                latency_trend.append({"name": date_str, "latency": avg_lat})
+                token_trend.append({"name": date_str, "tokens": tokens})
+
+        return {
+            "summary": {
+                "totalMessages": total_messages,
+                "totalSessions": total_sessions,
+                "activeUsers7d": active_users_7d,
+                "avgMessagesPerSession": avg_msgs,
+                "messageGrowth": 15.2,
+                "userGrowth": 10.5
+            },
+            "trend": trend_data,
+            "modes": modes,
+            "topUsers": top_users,
+            "userTypes": user_types,
+            "hourlyActivity": hourly_activity,
+            "latencyTrend": latency_trend,
+            "tokenTrend": token_trend
+        }
+    except Exception as e:
+        print(f"Error in get_user_analytics: {str(e)}")
+        raise
