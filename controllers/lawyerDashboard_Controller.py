@@ -139,6 +139,18 @@ async def get_lawyer_dashboard_stats(lawyer_id: str) -> dict:
     platform_fees = total_bookings * 200.0
     net_earnings = total_earnings - platform_fees
 
+    # 6. Total & Unread Messages (from user_messages collection)
+    messages_filter = {"$or": [{"lawyer_id": str(lawyer_obj_id)}, {"lawyer_id": lawyer_id}]}
+    total_messages = db["user_messages"].count_documents(messages_filter)
+    unread_messages = db["user_messages"].count_documents({
+        "$and": [
+            messages_filter,
+            {"sender_role": "user"},
+            {"is_read": {"$ne": True}},
+            {"content": {"$exists": True, "$ne": ""}}
+        ]
+    })
+
     # Return keys DIRECTLY as the route wraps this in a 'stats' key
     return {
         "totalBookings": total_bookings,
@@ -150,6 +162,8 @@ async def get_lawyer_dashboard_stats(lawyer_id: str) -> dict:
         "totalEarnings": total_earnings, # Gross
         "netEarnings": net_earnings,
         "platformFees": platform_fees,
+        "totalMessages": total_messages,
+        "unreadMessages": unread_messages,
         "activeCases": cases_col.count_documents({"$or": [{"lawyerId": lawyer_id, "status": "active"}, {"lawyer_id": lawyer_obj_id, "status": "active"}]})
     }
 
