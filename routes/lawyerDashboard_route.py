@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from controllers.lawyerDashboard_Controller import (
     get_lawyer_dashboard_stats, 
@@ -14,7 +14,8 @@ from controllers.lawyerDashboard_Controller import (
     update_lawyer_profile,
     finalize_appointment_booking,
     get_lawyer_bookings,
-    get_lawyer_analytics
+    get_lawyer_analytics,
+    upload_lawyer_document
 )
 
 from controllers.user_controller import UserController
@@ -69,6 +70,19 @@ async def get_lawyer_documents_route(lawyer_id: str):
     try:
         documents = await get_lawyer_documents(lawyer_id)
         return JSONResponse(status_code=200, content={"success": True, "documents": documents})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{lawyer_id}/documents/upload")
+async def upload_lawyer_document_route(
+    lawyer_id: str, 
+    file: UploadFile = File(...), 
+    note: str = Form(default=""), 
+    folder: str = Form(default="")
+):
+    try:
+        result = await upload_lawyer_document(lawyer_id, file, note, folder)
+        return JSONResponse(status_code=200, content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

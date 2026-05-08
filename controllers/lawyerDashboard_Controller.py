@@ -1,9 +1,11 @@
 from datetime import datetime
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
+import uuid
 
 from config.cognilex_db import get_database
+from config.R2_config import r2_storage
 
 
 def get_30_min_chunks(time_range: str) -> list:
@@ -605,10 +607,87 @@ async def get_lawyer_documents(lawyer_id: str) -> list:
             "name": doc.get("name", "Unnamed Document"),
             "type": doc.get("type", "File"),
             "date": doc.get("created_at").strftime("%b %d, %Y") if doc.get("created_at") else "N/A",
-            "size": doc.get("size", "0 KB"),
-            "url": doc.get("url")
+            "size": doc.get("size_str", "0 MB"),
+            "url": doc.get("url"),
+            "note": doc.get("note", ""),
+            "folder_id": doc.get("folder_id", "")
         })
     return documents
+
+async def upload_lawyer_document(lawyer_id: str, file: UploadFile, note: str, folder: str) -> dict:
+    """Uploads a document to Cloudflare R2 and saves metadata to MongoDB"""
+    db = get_database()
+    if db is None:
+        return {"success": False, "message": "Database error"}
+
+    # Resolve the true Lawyer Profile ID
+    lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+
+    # Validate file
+    if not file or not file.filename:
+        return {"success": False, "message": "No file provided"}
+
+    # Generate unique key for R2
+    file_extension = file.filename.split(".")[-1] if "." in file.filename else ""
+    unique_id = str(uuid.uuid4())
+    file_key = f"documents/lawyers/{lawyer_obj_id}/{unique_id}_{file.filename}"
+
+    try:
+        # Calculate file size in MB BEFORE upload
+        file.file.seek(0, 2)
+        size_bytes = file.file.tell()
+        size_mb = size_bytes / (1024 * 1024)
+        size_str = f"{size_mb:.2f} MB"
+        file.file.seek(0) # Reset pointer back to beginning for R2 upload
+
+        # Upload to R2
+        public_url = await r2_storage.upload_file(
+            file_obj=file.file,
+            file_key=file_key,
+            content_type=file.content_type or "application/octet-stream"
+        )
+        
+        # Determine simple type (PDF, Image, Doc)
+        simple_type = "Document"
+        if file.content_type:
+            if "pdf" in file.content_type: simple_type = "PDF Document"
+            elif "image" in file.content_type: simple_type = "Image"
+            elif "word" in file.content_type or "officedocument" in file.content_type: simple_type = "Word Document"
+
+        # Save Metadata to MongoDB
+        document_record = {
+            "lawyer_id": lawyer_obj_id,
+            "name": file.filename,
+            "type": simple_type,
+            "mime_type": file.content_type,
+            "size_bytes": size_bytes,
+            "size_str": size_str,
+            "note": note,
+            "folder_id": folder if folder else None,
+            "url": public_url,
+            "r2_key": file_key,
+            "created_at": datetime.utcnow()
+        }
+        
+        result = db["documents"].insert_one(document_record)
+        
+        # Return formatted doc to frontend
+        new_doc = {
+            "id": str(result.inserted_id),
+            "name": file.filename,
+            "type": simple_type,
+            "date": datetime.utcnow().strftime("%b %d, %Y"),
+            "size": size_str,
+            "url": public_url,
+            "note": note,
+            "folder_id": folder if folder else ""
+        }
+        
+        return {"success": True, "document": new_doc}
+
+    except Exception as e:
+        print(f"[Backend Error] Document upload failed: {e}")
+        return {"success": False, "message": str(e)}
 
 async def add_availability_slot(lawyer_id: str, date: str, time: str, location: str = "Office", appointment_type: str = "Consultation") -> dict:
     db = get_database()
