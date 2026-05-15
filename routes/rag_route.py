@@ -14,11 +14,9 @@ Endpoints exposed:
 
 import os
 import io
-from typing import Optional
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/rag", tags=["RAG Management"])
 

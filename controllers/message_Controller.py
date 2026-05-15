@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from bson import ObjectId
-from typing import Dict, List, Optional
-from fastapi import HTTPException, status
+from typing import Dict, List
+from fastapi import HTTPException
 from config.cognilex_db import get_database
 from controllers.lawyerDashboard_Controller import resolve_lawyer_id
 

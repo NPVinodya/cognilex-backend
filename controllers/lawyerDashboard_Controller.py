@@ -1,6 +1,5 @@
 from datetime import datetime
 from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import HTTPException, status, UploadFile
 import uuid
 
@@ -480,14 +479,14 @@ async def finalize_appointment_booking(slot_id: str, payment_details: dict) -> d
     )
 
     if not updated_slot:
-        print(f"[Backend] Finalization failed: Slot is not available or already booked.")
+        print("[Backend] Finalization failed: Slot is not available or already booked.")
         # Check if it was already booked
         already_booked = db["appointments"].find_one({"_id": obj_id})
         if already_booked and already_booked.get("status") == "booked":
             return {"success": False, "message": "Slot already booked"}
         return {"success": False, "message": "Slot not found or unavailable"}
 
-    print(f"[Backend] Successfully locked slot! Creating booking record...")
+    print("[Backend] Successfully locked slot! Creating booking record...")
 
     # Create record in 'bookings' collection
     booking_record = {
@@ -820,3 +819,103 @@ async def update_lawyer_profile(lawyer_id: str, update_data: dict) -> dict:
         )
 
     return {"success": True, "message": "Profile updated successfully"}
+
+async def get_lawyer_cases(lawyer_id: str) -> list:
+    """Fetch all cases for a specific lawyer."""
+    print(f"[Backend] Fetching cases for lawyer: {lawyer_id}")
+    db = get_database()
+    if db is None:
+        return []
+
+    try:
+        lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+        
+        # Use standard synchronous cursor iteration
+        cursor = db["cases"].find({"lawyer_id": str(lawyer_obj_id)}).sort("created_at", -1)
+        cases = []
+        for case in cursor:
+            # Safely handle the created_at date
+            created_at = case.get("created_at")
+            iso_date = created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else None
+            
+            cases.append({
+                "id": str(case["_id"]),
+                "title": case.get("title", "Untitled Case"),
+                "clientName": case.get("clientName", "Unknown Client"),
+                "caseType": case.get("caseType", "General"),
+                "status": case.get("status", "In Progress"),
+                "progress": int(case.get("progress", 0)) if case.get("progress") is not None else 0,
+                "nextHearingDate": case.get("nextHearingDate"),
+                "description": case.get("description", ""),
+                "createdAt": iso_date
+            })
+        print(f"[Backend] Successfully fetched {len(cases)} cases")
+        return cases
+    except Exception as e:
+        print(f"[Backend Error] Failed to fetch cases: {str(e)}")
+        return []
+
+async def create_lawyer_case(lawyer_id: str, case_data: dict) -> dict:
+    """Create a new legal case record."""
+    print(f"[Backend] Attempting to create case for lawyer: {lawyer_id}")
+    db = get_database()
+    if db is None:
+        return {"success": False, "message": "Database connection error"}
+
+    try:
+        lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
+        print(f"[Backend] Resolved Lawyer ID: {lawyer_obj_id}")
+        
+        new_case = {
+            "lawyer_id": str(lawyer_obj_id),
+            "title": case_data.get("title"),
+            "clientName": case_data.get("clientName"),
+            "caseType": case_data.get("caseType", "Civil Law"),
+            "status": case_data.get("status", "In Progress"),
+            "progress": int(case_data.get("progress", 0)),
+            "nextHearingDate": case_data.get("nextHearingDate"),
+            "description": case_data.get("description"),
+            "created_at": datetime.utcnow()
+        }
+        
+        print(f"[Backend] Inserting case data: {new_case.get('title')}")
+        result = db["cases"].insert_one(new_case)
+        print(f"[Backend] Insert successful. New ID: {result.inserted_id}")
+        
+        return {
+            "success": True, 
+            "id": str(result.inserted_id),
+            "message": "Case record created successfully"
+        }
+    except Exception as e:
+        print(f"[Backend Error] Failed to create case: {str(e)}")
+        return {"success": False, "message": f"Internal error: {str(e)}"}
+
+async def delete_lawyer_case(case_id: str) -> bool:
+    """Delete a case record."""
+    db = get_database()
+    if db is None:
+        return False
+        
+    result = db["cases"].delete_one({"_id": ObjectId(case_id)})
+    return result.deleted_count > 0
+
+async def update_lawyer_case(case_id: str, update_data: dict) -> bool:
+    """Update an existing case record."""
+    db = get_database()
+    if db is None:
+        return False
+
+    # Clean the data to prevent unwanted field updates
+    allowed_fields = ["title", "clientName", "caseType", "status", "progress", "nextHearingDate", "description"]
+    clean_update = {k: v for k, v in update_data.items() if k in allowed_fields}
+    
+    if "progress" in clean_update:
+        clean_update["progress"] = int(clean_update["progress"])
+
+    result = db["cases"].update_one(
+        {"_id": ObjectId(case_id)},
+        {"$set": clean_update}
+    )
+    return result.modified_count > 0
+

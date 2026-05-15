@@ -1,7 +1,6 @@
-from typing import Dict, List
+from typing import Dict
 from bson import ObjectId
 from datetime import datetime, timezone
-from fastapi import HTTPException, status
 
 from config.cognilex_db import get_database
 from models.feedback import FeedbackCreate

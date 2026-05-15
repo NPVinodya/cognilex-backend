@@ -1,5 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict
+from fastapi import APIRouter
 from controllers.message_Controller import (
     send_direct_message, 
     get_lawyer_messages, 

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, status
-from typing import Dict
 
 from controllers.feedback_Controller import (
     create_feedback,
