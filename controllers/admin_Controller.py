@@ -6,7 +6,7 @@ from config.cognilex_db import get_database
 from config.jwt import create_access_token
 from datetime import datetime, timezone
 from models.user import UserModel
-from models.admin import AdminLoginRequest, AdminCreateRequest, AdminResponse
+from models.admin import AdminLoginRequest, AdminCreateRequest
 
 
 async def register_admin(data: AdminCreateRequest) -> Dict:

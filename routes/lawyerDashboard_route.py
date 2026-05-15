@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Body
 from fastapi.responses import JSONResponse
 from controllers.lawyerDashboard_Controller import (
     get_lawyer_dashboard_stats, 
@@ -15,7 +15,11 @@ from controllers.lawyerDashboard_Controller import (
     finalize_appointment_booking,
     get_lawyer_bookings,
     get_lawyer_analytics,
-    upload_lawyer_document
+    upload_lawyer_document,
+    get_lawyer_cases,
+    create_lawyer_case,
+    delete_lawyer_case,
+    update_lawyer_case
 )
 
 from controllers.user_controller import UserController
@@ -181,5 +185,43 @@ async def update_password_route(data: UpdatePasswordRequest):
         return JSONResponse(status_code=200, content=result)
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Case Management Routes ---
+
+@router.get("/{lawyer_id}/cases")
+async def get_cases_route(lawyer_id: str):
+    try:
+        cases = await get_lawyer_cases(lawyer_id)
+        return JSONResponse(status_code=200, content={"success": True, "cases": cases})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{lawyer_id}/cases")
+async def create_case_route(lawyer_id: str, case_data: dict = Body(...)):
+    try:
+        result = await create_lawyer_case(lawyer_id, case_data)
+        return JSONResponse(status_code=201, content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/case/{case_id}")
+async def delete_case_route(case_id: str):
+    try:
+        success = await delete_lawyer_case(case_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return JSONResponse(status_code=200, content={"success": True, "message": "Case deleted"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/case/{case_id}")
+async def update_case_route(case_id: str, update_data: dict = Body(...)):
+    try:
+        success = await update_lawyer_case(case_id, update_data)
+        if not success:
+            raise HTTPException(status_code=404, detail="Case not found or no changes made")
+        return JSONResponse(status_code=200, content={"success": True, "message": "Case updated successfully"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
