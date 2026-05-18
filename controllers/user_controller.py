@@ -1,13 +1,23 @@
 import os
 import uuid
-import boto3
 from datetime import datetime, timezone
-from fastapi import HTTPException, status, UploadFile
+
+import boto3
 from bson import ObjectId
+from fastapi import HTTPException, UploadFile, status
+from pymongo.errors import DuplicateKeyError
+
 from config.cognilex_db import get_database
 from config.jwt import create_access_token
-from models.user import RegisterUserRequest, UserModel, LoginRequest, RegisterOAuthRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
-from pymongo.errors import DuplicateKeyError
+from models.user import (
+    LoginRequest,
+    RegisterOAuthRequest,
+    RegisterUserRequest,
+    UpdatePasswordRequest,
+    UpdatePreferencesRequest,
+    UpdateProfileRequest,
+    UserModel,
+)
 
 
 class UserController:
@@ -247,7 +257,7 @@ class UserController:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        
+
         update_data = {"name": data.name}
         if data.avatar_url:
             update_data["avatar_url"] = data.avatar_url
@@ -292,7 +302,7 @@ class UserController:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        
+
         users.update_one({"email": data.email}, {"$set": {"preferences": {"appearance": data.appearance, "language": data.language}}})
         return {"message": "Preferences updated successfully"}
 
@@ -311,7 +321,7 @@ class UserController:
         r2_account_id = os.getenv("R2_ACCOUNT_ID")
         r2_bucket_name = os.getenv("R2_BUCKET_NAME")
         r2_public_url = os.getenv("R2_PUBLIC_URL")
-        
+
         # Endpoint construction
         r2_endpoint_url = f"https://{r2_account_id}.r2.cloudflarestorage.com"
 
@@ -332,7 +342,7 @@ class UserController:
         try:
             # Read file content
             file_content = await file.read()
-            
+
             # Upload to R2
             s3.put_object(
                 Bucket=r2_bucket_name,

@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
+
 from bson import ObjectId
-from typing import Dict, List
 from fastapi import HTTPException
+
 from config.cognilex_db import get_database
 from controllers.lawyerDashboard_Controller import resolve_lawyer_id
 
-async def send_direct_message(user_id: str, lawyer_id: str, content: str, sender_role: str = "user") -> Dict:
+
+async def send_direct_message(user_id: str, lawyer_id: str, content: str, sender_role: str = "user") -> dict:
     """
     Save a direct message between a user and a lawyer.
     """
@@ -27,14 +29,14 @@ async def send_direct_message(user_id: str, lawyer_id: str, content: str, sender
     }
 
     result = db.user_messages.insert_one(message_doc)
-    
+
     return {
-        "success": True, 
+        "success": True,
         "message_id": str(result.inserted_id),
         "timestamp": message_doc["timestamp"].isoformat()
     }
 
-async def get_lawyer_messages(lawyer_id: str) -> List[Dict]:
+async def get_lawyer_messages(lawyer_id: str) -> list[dict]:
     """
     Fetch all messages for a specific lawyer, grouped by user.
     """
@@ -78,7 +80,7 @@ async def get_lawyer_messages(lawyer_id: str) -> List[Dict]:
 
     return enriched_messages
 
-async def get_user_messages_with_lawyer(user_id: str, lawyer_id: str) -> List[Dict]:
+async def get_user_messages_with_lawyer(user_id: str, lawyer_id: str) -> list[dict]:
     """
     Fetch conversation history between a specific user and lawyer.
     """
@@ -115,7 +117,7 @@ async def mark_messages_as_read(lawyer_id: str, user_id: str):
         db.user_messages.update_many(
             {
                 "$or": [{"lawyer_id": resolved_lawyer_id}, {"lawyer_id": lawyer_id}],
-                "user_id": user_id, 
+                "user_id": user_id,
                 "sender_role": "user"
             },
             {"$set": {"is_read": True}}

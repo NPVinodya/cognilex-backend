@@ -12,8 +12,8 @@ Endpoints exposed:
   GET    /rag/health                      — RAG server health check
 """
 
-import os
 import io
+import os
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile

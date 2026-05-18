@@ -1,7 +1,8 @@
-from datetime import datetime
-from bson import ObjectId
-from fastapi import HTTPException, status, UploadFile
 import uuid
+from datetime import datetime
+
+from bson import ObjectId
+from fastapi import HTTPException, UploadFile, status
 
 from config.cognilex_db import get_database
 from config.R2_config import r2_storage
@@ -15,7 +16,7 @@ def get_30_min_chunks(time_range: str) -> list:
     try:
         # Normalize the time string (e.g. 09.00 -> 09:00)
         t_range = time_range.replace(".", ":")
-        
+
         # Robust dash splitting (handle ' - ' or '-')
         if " - " in t_range:
             parts = [x.strip() for x in t_range.split(" - ")]
@@ -28,10 +29,10 @@ def get_30_min_chunks(time_range: str) -> list:
             return [time_range]
 
         start_str, end_str = parts
-        
+
         # Determine the format based on the presence of ':'
         fmt = "%I:%M %p"
-        
+
         start_time = datetime.strptime(start_str, fmt)
         end_time = datetime.strptime(end_str, fmt)
 
@@ -101,7 +102,7 @@ async def get_lawyer_dashboard_stats(lawyer_id: str) -> dict:
     # --- Real-time Stats from Bookings and Appointments ---
     # We check for both String and ObjectId just in case, to be 100% sure we find the data
     query_filter = {"$or": [{"lawyer_id": lawyer_obj_id}, {"lawyer_id": lawyer_id}]}
-    
+
     # 1. Total Bookings (from bookings collection)
     total_bookings = bookings_col.count_documents(query_filter)
 
@@ -127,7 +128,7 @@ async def get_lawyer_dashboard_stats(lawyer_id: str) -> dict:
     today_slots = appointments_col.count_documents(today_filter)
 
     profile_views = int(lawyer.get("profileViews", 2408))
-    
+
     # Calculate Platform Fees and Net Earnings (Fixed LKR 200 per booking)
     # We cast amount to float during aggregation to ensure accuracy
     earnings_pipeline = [
@@ -176,18 +177,18 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
 
     # Resolve the true Lawyer Profile ID
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     bookings_col = db["bookings"]
     # Be extremely flexible with ID field names (some might use lawyerId, others lawyer_id)
     query_filter = {
         "$or": [
-            {"lawyer_id": lawyer_obj_id}, 
+            {"lawyer_id": lawyer_obj_id},
             {"lawyer_id": lawyer_id},
             {"lawyerId": lawyer_id},
             {"lawyerId": lawyer_obj_id}
         ]
     }
-    
+
     # Debug: Check if ANY bookings exist for this lawyer
     total_in_db = bookings_col.count_documents(query_filter)
     print(f"[Analytics Debug] Total bookings in DB for lawyer {lawyer_id}: {total_in_db}")
@@ -195,10 +196,10 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
     # Aggregate by Month
     from datetime import datetime, timedelta
     now = datetime.utcnow()
-    
+
     start_date = None
     end_date = None
-    
+
     if period == "year":
         # Start of the current year
         start_date = datetime(now.year, 1, 1)
@@ -218,7 +219,7 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
         # Default fallback to This Month
         start_date = datetime(now.year, now.month, 1)
         print(f"[Analytics Debug] Filtering for Default (This Month) since {start_date}")
-    
+
     # Common date filter
     date_filter = {"safeDate": {"$gte": start_date}}
     if end_date:
@@ -234,7 +235,7 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
         {"$match": date_filter},
         {"$group": {
             "_id": {
-                "month": {"$month": "$safeDate"}, 
+                "month": {"$month": "$safeDate"},
                 "year": {"$year": "$safeDate"}
             },
             "gross": {"$sum": {"$convert": {"input": "$amount", "to": "double", "onError": 0, "onNull": 0}}},
@@ -242,11 +243,11 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
         }},
         {"$sort": {"_id.year": 1, "_id.month": 1}}
     ]
-    
+
     monthly_results = list(bookings_col.aggregate(monthly_pipeline))
     print(f"[Analytics Debug] Monthly records found: {len(monthly_results)}")
     monthly_data = []
-    
+
     for res in monthly_results:
         month_num = res["_id"]["month"]
         month_name = datetime(2026, month_num, 1).strftime("%b")
@@ -254,7 +255,7 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
         gross = res["gross"]
         fees = count * 200.0
         net = gross - fees
-        
+
         monthly_data.append({
             "month": month_name,
             "gross": gross,
@@ -280,7 +281,7 @@ async def get_lawyer_analytics(lawyer_id: str, period: str = "this-month") -> di
             "revenue": {"$sum": {"$convert": {"input": "$amount", "to": "double", "onError": 0, "onNull": 0}}}
         }}
     ]
-    
+
     service_results = list(bookings_col.aggregate(service_pipeline))
     service_distribution = []
     for res in service_results:
@@ -304,7 +305,7 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
 
     # Resolve the true Lawyer Profile ID (in case lawyer_id is a User ID)
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
     print(f"[Backend] Fetching appointments for Lawyer: {lawyer_id} (Resolved: {lawyer_obj_id}) | Date >= {today_str}")
 
@@ -320,10 +321,10 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
         "date": {"$gte": today_str}
     }
 
-    # Sort by date and then time. 
+    # Sort by date and then time.
     # Note: string sort for time isn't perfect for AM/PM but works for YYYY-MM-DD
     cursor = db["appointments"].find(query).sort([("date", 1), ("time", 1)]).limit(150)
-    
+
     slots = []
     for doc in cursor:
         slots.append({
@@ -337,7 +338,7 @@ async def get_lawyer_appointments(lawyer_id: str) -> list:
             "parent_range": doc.get("parent_range"),
             "status": doc.get("status", "available")
         })
-    
+
     print(f"[Backend] Found {len(slots)} slots for lawyer {lawyer_id}")
     return slots
 
@@ -347,11 +348,11 @@ async def get_slot_by_id(slot_id: str) -> dict:
     db = get_database()
     if db is None:
         return {}
-    
+
     doc = db["appointments"].find_one({"_id": ObjectId(slot_id)})
     if not doc:
         return {}
-        
+
     return {
         "id": str(doc["_id"]),
         "date": doc.get("date"),
@@ -369,11 +370,11 @@ async def get_all_lawyer_appointments(lawyer_id: str, status_filter: str = None)
 
     # Resolve the true Lawyer Profile ID
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     query_filter = {"$or": [{"lawyer_id": lawyer_obj_id}, {"lawyer_id": lawyer_id}]}
     if status_filter and status_filter != "all":
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        
+
         if status_filter == "upcoming":
             # Show future/today's slots that are booked, pending, or available
             query_filter["$and"] = [
@@ -383,7 +384,7 @@ async def get_all_lawyer_appointments(lawyer_id: str, status_filter: str = None)
             ]
             # Clean up top-level $or since we moved it into $and
             if "$or" in query_filter: del query_filter["$or"]
-            
+
         elif status_filter == "completed":
             # Show ALL past slots (< today) OR anything explicitly marked 'completed'
             query_filter["$and"] = [
@@ -396,7 +397,7 @@ async def get_all_lawyer_appointments(lawyer_id: str, status_filter: str = None)
             if "$or" in query_filter: del query_filter["$or"]
         else:
             query_filter["status"] = status_filter
-    
+
     cursor = db["appointments"].find(query_filter).sort("date", -1)
     appointments = []
     for doc in cursor:
@@ -429,7 +430,7 @@ async def update_appointment_status(appointment_id: str, new_status: str):
     db = get_database()
     if db is None:
         return {"success": False}
-    
+
     db["appointments"].update_one(
         {"_id": ObjectId(appointment_id)},
         {"$set": {"status": new_status}}
@@ -453,7 +454,7 @@ async def finalize_appointment_booking(slot_id: str, payment_details: dict) -> d
     # Atomic Check & Lock
     # Only update IF status is 'available' or 'pending_payment'
     print(f"[Backend] Attempting to finalize slot: {slot_id}")
-    
+
     current_slot = db["appointments"].find_one({"_id": obj_id})
     if current_slot:
         print(f"[Backend] Current slot status: {current_slot.get('status')}")
@@ -502,7 +503,7 @@ async def finalize_appointment_booking(slot_id: str, payment_details: dict) -> d
         "payment_status": "success",
         "createdAt": datetime.utcnow()
     }
-    
+
     db["bookings"].insert_one(booking_record)
 
     return {"success": True, "message": "Slot locked and booking recorded successfully"}
@@ -515,16 +516,16 @@ async def get_lawyer_clients(lawyer_id: str) -> list:
 
     # Resolve the true Lawyer Profile ID
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     print(f"[Clients Debug] Fetching clients for Lawyer ID: {lawyer_obj_id}")
     # Fetch from bookings collection to get Phone and Notes
     bookings_col = db["bookings"]
     query_filter = {"$or": [{"lawyer_id": lawyer_obj_id}, {"lawyer_id": lawyer_id}]}
     cursor = bookings_col.find(query_filter).sort("createdAt", -1)
-    
+
     clients = []
     seen_emails = set()
-    
+
     count = 0
     for doc in cursor:
         count += 1
@@ -532,7 +533,7 @@ async def get_lawyer_clients(lawyer_id: str) -> list:
         if not email or email in seen_emails:
             continue
         seen_emails.add(email)
-        
+
         clients.append({
             "id": str(doc["_id"]),
             "name": doc.get("client_name", "Legal Client"),
@@ -556,10 +557,10 @@ async def get_lawyer_bookings(lawyer_id: str, client_email: str = None) -> list:
     query_filter = {"$or": [{"lawyer_id": lawyer_obj_id}, {"lawyer_id": lawyer_id}]}
     if client_email:
         query_filter["client_email"] = client_email
-        
+
     cursor = db["bookings"].find(query_filter).sort("createdAt", -1)
     bookings = []
-    
+
     for doc in cursor:
         # Fetch associated appointment details to get Date, Time, Location
         appt_id = doc.get("appointment_id")
@@ -573,7 +574,7 @@ async def get_lawyer_bookings(lawyer_id: str, client_email: str = None) -> list:
                     "location": appt.get("location", "Virtual Consultation"),
                     "service": appt.get("type", appt.get("appointment_type", "Legal Consultation"))
                 }
-        
+
         bookings.append({
             "id": str(doc["_id"]),
             "clientName": doc.get("client_name", "Client"),
@@ -596,7 +597,7 @@ async def get_lawyer_documents(lawyer_id: str) -> list:
 
     # Resolve the true Lawyer Profile ID
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     query_filter = {"$or": [{"lawyer_id": lawyer_obj_id}, {"lawyer_id": lawyer_id}]}
     cursor = db["documents"].find(query_filter).sort("created_at", -1)
     documents = []
@@ -645,7 +646,7 @@ async def upload_lawyer_document(lawyer_id: str, file: UploadFile, note: str, fo
             file_key=file_key,
             content_type=file.content_type or "application/octet-stream"
         )
-        
+
         # Determine simple type (PDF, Image, Doc)
         simple_type = "Document"
         if file.content_type:
@@ -667,9 +668,9 @@ async def upload_lawyer_document(lawyer_id: str, file: UploadFile, note: str, fo
             "r2_key": file_key,
             "created_at": datetime.utcnow()
         }
-        
+
         result = db["documents"].insert_one(document_record)
-        
+
         # Return formatted doc to frontend
         new_doc = {
             "id": str(result.inserted_id),
@@ -681,7 +682,7 @@ async def upload_lawyer_document(lawyer_id: str, file: UploadFile, note: str, fo
             "note": note,
             "folder_id": folder if folder else ""
         }
-        
+
         return {"success": True, "document": new_doc}
 
     except Exception as e:
@@ -698,7 +699,7 @@ async def add_availability_slot(lawyer_id: str, date: str, time: str, location: 
 
     # Automatic 30-min session splitting
     time_chunks = get_30_min_chunks(time)
-    
+
     if len(time_chunks) > 1:
         slots_to_insert = []
         for chunk in time_chunks:
@@ -747,7 +748,7 @@ async def get_lawyer_profile_settings(lawyer_id: str) -> dict:
 
     # Resolve the true Lawyer Profile ID (in case lawyer_id is a User ID)
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     lawyer = db["lawyers"].find_one({"_id": lawyer_obj_id})
     if not lawyer:
         raise HTTPException(status_code=404, detail="Lawyer profile not found")
@@ -778,7 +779,7 @@ async def update_lawyer_profile(lawyer_id: str, update_data: dict) -> dict:
 
     # Resolve the true Lawyer Profile ID
     lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-    
+
     # Get current profile for email comparison
     current_profile = db["lawyers"].find_one({"_id": lawyer_obj_id})
     if not current_profile:
@@ -787,13 +788,13 @@ async def update_lawyer_profile(lawyer_id: str, update_data: dict) -> dict:
     # 1. Update Lawyer collection
     # Only allow specific fields to be updated via this endpoint
     allowed_fields = [
-        "fullName", "phone", "bio", "barCouncilNumber", 
-        "yearsOfExperience", "practiceAreas", "consultationFee", 
+        "fullName", "phone", "bio", "barCouncilNumber",
+        "yearsOfExperience", "practiceAreas", "consultationFee",
         "province", "location", "email"
     ]
-    
+
     clean_update = {k: v for k, v in update_data.items() if k in allowed_fields}
-    
+
     if not clean_update:
         return {"success": False, "message": "No valid fields to update"}
 
@@ -806,7 +807,7 @@ async def update_lawyer_profile(lawyer_id: str, update_data: dict) -> dict:
     if "email" in clean_update and clean_update["email"] != current_profile.get("email"):
         old_email = current_profile.get("email")
         new_email = clean_update["email"]
-        
+
         # Check if new email is already taken in Users
         if db["users"].find_one({"email": new_email}):
              # Revert lawyer email update to maintain integrity if desired
@@ -829,7 +830,7 @@ async def get_lawyer_cases(lawyer_id: str) -> list:
 
     try:
         lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
-        
+
         # Use standard synchronous cursor iteration
         cursor = db["cases"].find({"lawyer_id": str(lawyer_obj_id)}).sort("created_at", -1)
         cases = []
@@ -837,7 +838,7 @@ async def get_lawyer_cases(lawyer_id: str) -> list:
             # Safely handle the created_at date
             created_at = case.get("created_at")
             iso_date = created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else None
-            
+
             cases.append({
                 "id": str(case["_id"]),
                 "title": case.get("title", "Untitled Case"),
@@ -865,7 +866,7 @@ async def create_lawyer_case(lawyer_id: str, case_data: dict) -> dict:
     try:
         lawyer_obj_id = await resolve_lawyer_id(db, lawyer_id)
         print(f"[Backend] Resolved Lawyer ID: {lawyer_obj_id}")
-        
+
         new_case = {
             "lawyer_id": str(lawyer_obj_id),
             "title": case_data.get("title"),
@@ -877,13 +878,13 @@ async def create_lawyer_case(lawyer_id: str, case_data: dict) -> dict:
             "description": case_data.get("description"),
             "created_at": datetime.utcnow()
         }
-        
+
         print(f"[Backend] Inserting case data: {new_case.get('title')}")
         result = db["cases"].insert_one(new_case)
         print(f"[Backend] Insert successful. New ID: {result.inserted_id}")
-        
+
         return {
-            "success": True, 
+            "success": True,
             "id": str(result.inserted_id),
             "message": "Case record created successfully"
         }
@@ -896,7 +897,7 @@ async def delete_lawyer_case(case_id: str) -> bool:
     db = get_database()
     if db is None:
         return False
-        
+
     result = db["cases"].delete_one({"_id": ObjectId(case_id)})
     return result.deleted_count > 0
 
@@ -909,7 +910,7 @@ async def update_lawyer_case(case_id: str, update_data: dict) -> bool:
     # Clean the data to prevent unwanted field updates
     allowed_fields = ["title", "clientName", "caseType", "status", "progress", "nextHearingDate", "description"]
     clean_update = {k: v for k, v in update_data.items() if k in allowed_fields}
-    
+
     if "progress" in clean_update:
         clean_update["progress"] = int(clean_update["progress"])
 

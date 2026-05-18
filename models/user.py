@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from pydantic import BaseModel, EmailStr, ConfigDict
-from argon2 import PasswordHasher
 from typing import Literal
+
+from argon2 import PasswordHasher
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 pwd_hasher = PasswordHasher()
 

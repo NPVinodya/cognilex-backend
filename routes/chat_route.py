@@ -11,14 +11,20 @@ Full endpoints exposed:
   GET  /chat/health      — health check
 """
 
-from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from controllers.chat_controller import (
-    ask_rag, guest_mode_chat, get_session_history, get_sessions, update_session_title,
-    create_share, get_shared_chat, save_shared_chat, delete_session,
+    ask_rag,
+    create_share,
+    delete_session,
+    get_session_history,
+    get_sessions,
+    get_shared_chat,
+    guest_mode_chat,
+    save_shared_chat,
+    update_session_title,
 )
 from models.chat import ChatRequest, ChatResponse, MessageModel
 
@@ -71,7 +77,7 @@ async def chat_guest_mode(request: ChatRequest):
 
 @router.get(
     "/sessions",
-    response_model=Dict[str, List[Dict]],
+    response_model=dict[str, list[dict]],
     summary="Get all chat sessions for a user",
 )
 async def fetch_sessions(user_id: str = Query(..., description="The user's email or ID")):
@@ -87,7 +93,7 @@ async def fetch_sessions(user_id: str = Query(..., description="The user's email
 
 @router.get(
     "/history",
-    response_model=Dict[str, List[MessageModel]],
+    response_model=dict[str, list[MessageModel]],
     summary="Get message history for a session",
 )
 async def fetch_history(session_id: str = Query(..., description="The unique session ID")):

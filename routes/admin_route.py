@@ -1,25 +1,26 @@
+
 from fastapi import APIRouter, HTTPException, Query
-from typing import Dict
+
 from controllers.admin_Controller import (
-    get_dashboard_stats,
-    get_all_users,
-    get_pending_lawyers,
     approve_or_reject_lawyer,
+    change_admin_password,
+    delete_admin,
     delete_user,
+    get_admin_preferences,
+    get_all_admins,
+    get_all_users,
+    get_dashboard_stats,
+    get_financial_stats,
+    get_pending_lawyers,
+    get_platform_settings,
+    get_user_analytics,
     login_admin,
     register_admin,
-    get_all_admins,
-    delete_admin,
-    update_admin_profile,
-    change_admin_password,
-    get_platform_settings,
-    update_platform_settings,
-    get_admin_preferences,
     update_admin_preferences,
-    get_financial_stats,
-    get_user_analytics
+    update_admin_profile,
+    update_platform_settings,
 )
-from models.admin import ApprovalRequest, AdminLoginRequest, AdminCreateRequest
+from models.admin import AdminCreateRequest, AdminLoginRequest, ApprovalRequest
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -127,7 +128,7 @@ async def remove_admin(admin_id: str):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.put("/profile/{admin_id}")
-async def update_profile(admin_id: str, data: Dict):
+async def update_profile(admin_id: str, data: dict):
     """Update administrator profile"""
     try:
         return await update_admin_profile(admin_id, data)
@@ -135,7 +136,7 @@ async def update_profile(admin_id: str, data: Dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/change-password/{admin_id}")
-async def change_password(admin_id: str, data: Dict):
+async def change_password(admin_id: str, data: dict):
     """Change administrator password"""
     try:
         return await change_admin_password(admin_id, data.get("current_password"), data.get("new_password"))
@@ -153,7 +154,7 @@ async def get_settings():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/settings")
-async def update_settings(data: Dict):
+async def update_settings(data: dict):
     """Update global platform settings"""
     try:
         return await update_platform_settings(data)
@@ -169,7 +170,7 @@ async def get_preferences(admin_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/preferences/{admin_id}")
-async def update_preferences(admin_id: str, data: Dict):
+async def update_preferences(admin_id: str, data: dict):
     """Update admin preferences"""
     try:
         return await update_admin_preferences(admin_id, data)

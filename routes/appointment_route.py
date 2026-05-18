@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -17,14 +17,14 @@ class AppointmentCreate(BaseModel):
     date: str
     time: str
     appointment_type: str
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class AppointmentUpdate(BaseModel):
     action: Literal["accept", "reject", "reschedule"]
-    new_date: Optional[str] = None
-    new_time: Optional[str] = None
-    reason: Optional[str] = None
+    new_date: str | None = None
+    new_time: str | None = None
+    reason: str | None = None
 
 
 def parse_object_id(value: str, field_name: str) -> ObjectId:
@@ -136,7 +136,7 @@ def get_client_appointments(email: str, db=Depends(get_database)):
             {"client_email": email}
         ]
     }
-    
+
     if user_id:
         query["$or"].extend([
             {"client_id": user_id},
@@ -144,7 +144,7 @@ def get_client_appointments(email: str, db=Depends(get_database)):
         ])
 
     cursor = db["appointments"].find(query).sort([("date", -1)])
-    
+
     appointments = []
     count = 0
     for doc in cursor:
@@ -153,7 +153,7 @@ def get_client_appointments(email: str, db=Depends(get_database)):
         lawyer = None
         if "lawyer_id" in doc:
             lawyer = db["lawyers"].find_one({"_id": doc["lawyer_id"]})
-            
+
         # Map status to frontend status
         raw_status = doc.get("status", "pending")
         display_status = "Pending"
@@ -163,7 +163,7 @@ def get_client_appointments(email: str, db=Depends(get_database)):
             display_status = "Canceled"
         elif raw_status == "completed":
             display_status = "Completed"
-            
+
         appointments.append({
             "id": str(doc["_id"]),
             "lawyerName": lawyer.get("fullName", "Unknown Lawyer") if lawyer else "Unknown Lawyer",
@@ -174,6 +174,6 @@ def get_client_appointments(email: str, db=Depends(get_database)):
             "location": doc.get("location", "Virtual Consultation"),
             "status": display_status
         })
-        
+
     print(f"[Backend] Fetched {count} appointments for client: {email}")
     return {"success": True, "appointments": appointments}

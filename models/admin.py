@@ -1,5 +1,7 @@
 from typing import Any
+
 from pydantic import BaseModel, EmailStr
+
 
 class UserStats(BaseModel):
     total_users: int

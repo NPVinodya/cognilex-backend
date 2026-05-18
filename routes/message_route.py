@@ -1,11 +1,12 @@
 from fastapi import APIRouter
-from controllers.message_Controller import (
-    send_direct_message, 
-    get_lawyer_messages, 
-    get_user_messages_with_lawyer,
-    mark_messages_as_read
-)
 from pydantic import BaseModel
+
+from controllers.message_Controller import (
+    get_lawyer_messages,
+    get_user_messages_with_lawyer,
+    mark_messages_as_read,
+    send_direct_message,
+)
 
 router = APIRouter(prefix="/api/messages", tags=["Messages"])
 
