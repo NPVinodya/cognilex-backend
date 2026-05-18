@@ -1,6 +1,14 @@
-from fastapi import APIRouter, status, File, UploadFile
-from models.user import RegisterUserRequest, LoginRequest, RegisterOAuthRequest, UpdateProfileRequest, UpdatePasswordRequest, UpdatePreferencesRequest
+from fastapi import APIRouter, File, UploadFile, status
+
 from controllers.user_controller import UserController
+from models.user import (
+    LoginRequest,
+    RegisterOAuthRequest,
+    RegisterUserRequest,
+    UpdatePasswordRequest,
+    UpdatePreferencesRequest,
+    UpdateProfileRequest,
+)
 
 router = APIRouter(tags=["Authentication"])
 

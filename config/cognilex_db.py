@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 
+
 class User(BaseModel):
     username: str
     email: EmailStr
@@ -11,9 +12,10 @@ class UserLogin(BaseModel):
     password: str
 # File: `database.py`
 import os
+
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
-from dotenv import load_dotenv
 
 # Load environment variables from .env
 load_dotenv()

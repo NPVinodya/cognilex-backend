@@ -1,21 +1,20 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from starlette.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 import os
+from contextlib import asynccontextmanager
 
-from config.cognilex_db import connect_to_mongodb,close_mongodb_connection
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.cors import CORSMiddleware
 
-
-from routes.user_route import router as user_router
+from config.cognilex_db import close_mongodb_connection, connect_to_mongodb
 from routes.admin_route import router as admin_router
+from routes.appointment_route import router as appointment_router
+from routes.chat_route import router as chat_router
+from routes.feedback_route import router as feedback_router
 from routes.lawyer_route import router as lawyer_router
 from routes.lawyerDashboard_route import router as lawyer_dashboard_router
-from routes.appointment_route import router as appointment_router
-from routes.feedback_route import router as feedback_router
-from routes.chat_route import router as chat_router
 from routes.message_route import router as message_router
 from routes.rag_route import router as rag_router
+from routes.user_route import router as user_router
 
 
 @asynccontextmanager

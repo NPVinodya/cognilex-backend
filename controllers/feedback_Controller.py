@@ -1,12 +1,12 @@
-from typing import Dict, List
-from bson import ObjectId
 from datetime import datetime, timezone
-from fastapi import HTTPException, status
+
+from bson import ObjectId
 
 from config.cognilex_db import get_database
 from models.feedback import FeedbackCreate
 
-async def create_feedback(data: FeedbackCreate) -> Dict:
+
+async def create_feedback(data: FeedbackCreate) -> dict:
     """Save a new feedback submission"""
     try:
         db = get_database()
@@ -14,13 +14,13 @@ async def create_feedback(data: FeedbackCreate) -> Dict:
             raise Exception("Database connection not available")
 
         feedback_collection = db["feedback"]
-        
+
         new_feedback = data.model_dump()
         new_feedback["created_at"] = datetime.now(timezone.utc)
         new_feedback["status"] = "pending"
 
         result = feedback_collection.insert_one(new_feedback)
-        
+
         return {
             "success": True,
             "message": "Feedback submitted successfully",
@@ -30,7 +30,7 @@ async def create_feedback(data: FeedbackCreate) -> Dict:
         print(f"Error in create_feedback: {str(e)}")
         raise
 
-async def get_all_feedback() -> Dict:
+async def get_all_feedback() -> dict:
     """Retrieve all feedback submissions for admin"""
     try:
         db = get_database()
@@ -44,7 +44,7 @@ async def get_all_feedback() -> Dict:
         for item in feedbacks:
             item["id"] = str(item.pop("_id"))
             # Ensure ISO format for frontend if needed, but datetime objects are fine for FastAPI
-            
+
         return {
             "feedbacks": feedbacks,
             "total": len(feedbacks)
@@ -53,7 +53,7 @@ async def get_all_feedback() -> Dict:
         print(f"Error in get_all_feedback: {str(e)}")
         raise
 
-async def update_feedback_status(feedback_id: str, status_value: str) -> Dict:
+async def update_feedback_status(feedback_id: str, status_value: str) -> dict:
     """Update the status of a feedback entry (e.g., mark as read)"""
     try:
         db = get_database()
@@ -61,7 +61,7 @@ async def update_feedback_status(feedback_id: str, status_value: str) -> Dict:
             raise Exception("Database connection not available")
 
         feedback_collection = db["feedback"]
-        
+
         result = feedback_collection.update_one(
             {"_id": ObjectId(feedback_id)},
             {"$set": {"status": status_value}}
@@ -78,7 +78,7 @@ async def update_feedback_status(feedback_id: str, status_value: str) -> Dict:
         print(f"Error in update_feedback_status: {str(e)}")
         raise
 
-async def delete_feedback(feedback_id: str) -> Dict:
+async def delete_feedback(feedback_id: str) -> dict:
     """Delete a feedback entry"""
     try:
         db = get_database()

@@ -1,11 +1,12 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from datetime import datetime, timezone
+
 
 class FeedbackBase(BaseModel):
     name: str
     email: EmailStr
-    phone: Optional[str] = None
+    phone: str | None = None
     subject: str
     message: str
 

@@ -1,7 +1,7 @@
 # python
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 import jwt
 from fastapi import HTTPException, status
@@ -13,10 +13,10 @@ JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def create_access_token(
-    data: Dict[str, Any],
-    expires_delta: Optional[timedelta] = None,
+    data: dict[str, Any],
+    expires_delta: timedelta | None = None,
 ) -> str:
-    """
+    r"""
     Create a signed JWT access token.
 
     \* `data` - dict with claims (e.g., \{"sub": user\_id, "email": email\})
@@ -39,7 +39,7 @@ def create_access_token(
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> Dict[str, Any]:
+def decode_access_token(token: str) -> dict[str, Any]:
     """
     Decode and validate a JWT access token.
     Raises HTTPException if invalid or expired.

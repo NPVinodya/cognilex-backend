@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, status
-from typing import Dict
 
 from controllers.feedback_Controller import (
     create_feedback,
+    delete_feedback,
     get_all_feedback,
     update_feedback_status,
-    delete_feedback
 )
 from models.feedback import FeedbackCreate
 

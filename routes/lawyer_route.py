@@ -1,18 +1,18 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Body
-from fastapi.responses import JSONResponse
-from typing import List, Optional
 import json
-from bson import ObjectId
 from datetime import datetime
-from config.cognilex_db import get_database
 
+from bson import ObjectId
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+
+from config.cognilex_db import get_database
 from controllers.lawyer_Controller import (
-    register_lawyer,
+    approve_lawyer,
     get_all_lawyers,
     get_lawyer_by_id,
-    approve_lawyer,
+    get_pending_lawyers,
+    register_lawyer,
     reject_lawyer,
-    get_pending_lawyers
 )
 
 router = APIRouter(prefix="/lawyer", tags=["Lawyer"])
@@ -101,7 +101,7 @@ async def register_lawyer_route(
 
 
 @router.get("/all")
-async def get_lawyers_route(province: Optional[str] = None, specialization: Optional[str] = None,
+async def get_lawyers_route(province: str | None = None, specialization: str | None = None,
                             status: str = "approved"):
     lawyers = await get_all_lawyers(province, specialization, status)
     return JSONResponse(status_code=200, content={"success": True, "count": len(lawyers), "lawyers": lawyers})
@@ -155,8 +155,8 @@ async def manage_appointment(
         lawyer_id: str,
         appointment_id: str,
         action: str = Form(...),  # "accept", "reject", "reschedule"
-        new_date: Optional[str] = Form(None),
-        reason: Optional[str] = Form(None)
+        new_date: str | None = Form(None),
+        reason: str | None = Form(None)
 ):
 
     try:
