@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 
 class MessageModel:
@@ -10,7 +9,7 @@ class MessageModel:
             conversation_id: str,
             sender: str,
             text: str,
-            citation: Optional[dict] = None
+            citation: dict | None = None
     ) -> dict:
         """Create message document"""
         doc = {

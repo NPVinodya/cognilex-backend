@@ -1,6 +1,6 @@
 # models/lawyer.py
+
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
 
 
 class LawyerRegistration(BaseModel):
@@ -15,12 +15,12 @@ class LawyerRegistration(BaseModel):
     barCouncilNumber: str
     specialization: str
     yearsOfExperience: int
-    lawFirm: Optional[str] = None
+    lawFirm: str | None = None
     languagesSpoken: str
     lawSchool: str
     graduationYear: int
-    additionalQualifications: Optional[str] = None
-    practiceAreas: List[str]
+    additionalQualifications: str | None = None
+    practiceAreas: list[str]
     consultationFee: float
     availability: str
     bio: str
@@ -34,16 +34,16 @@ class LawyerResponse(BaseModel):
     createdAt: str
     barNumber: str  # Changed from barCouncilNumber
     province: str
-    specializations: List[str]  # Changed from practiceAreas
+    specializations: list[str]  # Changed from practiceAreas
     yearsOfPractice: int  # Changed from yearsOfExperience
     rating: float
     totalCases: int  # Changed from totalAppointments
     vettingStatus: str  # Changed from status
     address: str
     phone: str
-    profilePhotoUrl: Optional[str] = None
-    bio: Optional[str] = None
-    consultationFee: Optional[float] = None
+    profilePhotoUrl: str | None = None
+    bio: str | None = None
+    consultationFee: float | None = None
 
     class Config:
         populate_by_name = True
@@ -52,4 +52,4 @@ class LawyerResponse(BaseModel):
 class LawyerListResponse(BaseModel):
     success: bool
     count: int
-    lawyers: List[LawyerResponse]
+    lawyers: list[LawyerResponse]

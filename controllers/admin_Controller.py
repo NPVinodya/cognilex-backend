@@ -1,15 +1,15 @@
+from datetime import datetime, timezone
+
 from bson import ObjectId
-from typing import Dict
 from fastapi import HTTPException, status
 
 from config.cognilex_db import get_database
 from config.jwt import create_access_token
-from datetime import datetime, timezone
+from models.admin import AdminCreateRequest, AdminLoginRequest
 from models.user import UserModel
-from models.admin import AdminLoginRequest, AdminCreateRequest
 
 
-async def register_admin(data: AdminCreateRequest) -> Dict:
+async def register_admin(data: AdminCreateRequest) -> dict:
     """Register a new administrator"""
     try:
         db = get_database()
@@ -50,7 +50,7 @@ async def register_admin(data: AdminCreateRequest) -> Dict:
         raise
 
 
-async def get_all_admins() -> Dict:
+async def get_all_admins() -> dict:
     """Get all administrators"""
     try:
         db = get_database()
@@ -75,7 +75,7 @@ async def get_all_admins() -> Dict:
         raise
 
 
-async def get_dashboard_stats() -> Dict:
+async def get_dashboard_stats() -> dict:
     """Get dashboard statistics"""
     try:
         db = get_database()
@@ -103,7 +103,7 @@ async def get_dashboard_stats() -> Dict:
         raise
 
 
-async def get_all_users(skip: int = 0, limit: int = 10) -> Dict:
+async def get_all_users(skip: int = 0, limit: int = 10) -> dict:
     """Get all users with pagination"""
     try:
         db = get_database()
@@ -134,7 +134,7 @@ async def get_all_users(skip: int = 0, limit: int = 10) -> Dict:
         raise
 
 
-async def get_pending_lawyers() -> Dict:
+async def get_pending_lawyers() -> dict:
     """Get all pending lawyer approvals"""
     try:
         db = get_database()
@@ -159,7 +159,7 @@ async def get_pending_lawyers() -> Dict:
         raise
 
 
-async def approve_or_reject_lawyer(lawyer_id: str, action: str) -> Dict:
+async def approve_or_reject_lawyer(lawyer_id: str, action: str) -> dict:
     """Approve or reject a lawyer"""
     try:
         db = get_database()
@@ -186,7 +186,7 @@ async def approve_or_reject_lawyer(lawyer_id: str, action: str) -> Dict:
         raise
 
 
-async def delete_user(user_id: str) -> Dict:
+async def delete_user(user_id: str) -> dict:
     """Delete a user"""
     try:
         db = get_database()
@@ -210,7 +210,7 @@ async def delete_user(user_id: str) -> Dict:
         raise
 
 
-async def login_admin(data: AdminLoginRequest) -> Dict:
+async def login_admin(data: AdminLoginRequest) -> dict:
     """Authenticate admin and return JWT access token."""
     try:
         db = get_database()
@@ -278,7 +278,7 @@ async def login_admin(data: AdminLoginRequest) -> Dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
         )
-async def delete_admin(admin_id: str) -> Dict:
+async def delete_admin(admin_id: str) -> dict:
     """Delete an administrator"""
     try:
         db = get_database()
@@ -301,7 +301,7 @@ async def delete_admin(admin_id: str) -> Dict:
         print(f"Error in delete_admin: {str(e)}")
         raise
 
-async def update_admin_profile(admin_id: str, data: Dict) -> Dict:
+async def update_admin_profile(admin_id: str, data: dict) -> dict:
     """Update administrator profile name and email"""
     try:
         db = get_database()
@@ -327,7 +327,7 @@ async def update_admin_profile(admin_id: str, data: Dict) -> Dict:
         print(f"Error in update_admin_profile: {str(e)}")
         raise
 
-async def change_admin_password(admin_id: str, current_password: str, new_password: str) -> Dict:
+async def change_admin_password(admin_id: str, current_password: str, new_password: str) -> dict:
     """Change administrator password with verification"""
     try:
         db = get_database()
@@ -342,7 +342,7 @@ async def change_admin_password(admin_id: str, current_password: str, new_passwo
 
         # But since we're in the controller, we can import UserModel
         from models.user import UserModel
-        
+
         # Verify current password (assuming verify_password logic exists or using UserModel)
         try:
             if not UserModel.verify_password(current_password, stored_hash):
@@ -355,7 +355,7 @@ async def change_admin_password(admin_id: str, current_password: str, new_passwo
 
         # Hash new password
         new_hash = UserModel.hash_password(new_password)
-        
+
         admins_collection.update_one(
             {"_id": ObjectId(admin_id)},
             {"$set": {
@@ -372,12 +372,12 @@ async def change_admin_password(admin_id: str, current_password: str, new_passwo
         print(f"Error in change_admin_password: {str(e)}")
         raise
 
-async def get_platform_settings() -> Dict:
+async def get_platform_settings() -> dict:
     """Get global platform configuration settings"""
     try:
         db = get_database()
         settings_collection = db["settings"]
-        
+
         config = settings_collection.find_one({"key": "platform_config"})
         if not config:
             # Return defaults if not found
@@ -386,7 +386,7 @@ async def get_platform_settings() -> Dict:
                 "maintenance_mode": False,
                 "allow_new_registrations": True
             }
-        
+
         return {
             "markup_percentage": config.get("markup_percentage", 20.0),
             "maintenance_mode": config.get("maintenance_mode", False),
@@ -396,29 +396,29 @@ async def get_platform_settings() -> Dict:
         print(f"Error in get_platform_settings: {str(e)}")
         raise
 
-async def update_platform_settings(data: Dict) -> Dict:
+async def update_platform_settings(data: dict) -> dict:
     """Update global platform configuration settings"""
     try:
         db = get_database()
         settings_collection = db["settings"]
-        
+
         update_data = {
             "updated_at": datetime.now(timezone.utc)
         }
-        
+
         if "markup_percentage" in data:
             update_data["markup_percentage"] = float(data["markup_percentage"])
         if "maintenance_mode" in data:
             update_data["maintenance_mode"] = bool(data["maintenance_mode"])
         if "allow_new_registrations" in data:
             update_data["allow_new_registrations"] = bool(data["allow_new_registrations"])
-            
+
         settings_collection.update_one(
             {"key": "platform_config"},
             {"$set": update_data},
             upsert=True
         )
-        
+
         return {
             "success": True,
             "message": "Platform settings updated successfully"
@@ -427,43 +427,43 @@ async def update_platform_settings(data: Dict) -> Dict:
         print(f"Error in update_platform_settings: {str(e)}")
         raise
 
-async def get_admin_preferences(admin_id: str) -> Dict:
+async def get_admin_preferences(admin_id: str) -> dict:
     """Get personalized administrative preferences"""
     try:
         db = get_database()
         admins_collection = db["admins"]
         admin = admins_collection.find_one({"_id": ObjectId(admin_id)})
-        
+
         if not admin:
             return {"darkMode": False, "pushNotifications": True}
-            
+
         return admin.get("preferences", {"darkMode": False, "pushNotifications": True})
     except Exception as e:
         print(f"Error in get_admin_preferences: {str(e)}")
         raise
 
-async def update_admin_preferences(admin_id: str, prefs: Dict) -> Dict:
+async def update_admin_preferences(admin_id: str, prefs: dict) -> dict:
     """Update personalized administrative preferences"""
     try:
         db = get_database()
         admins_collection = db["admins"]
-        
+
         admins_collection.update_one(
             {"_id": ObjectId(admin_id)},
             {"$set": {"preferences": prefs}}
         )
-        
+
         return {"success": True, "message": "Preferences updated"}
     except Exception as e:
         print(f"Error in update_admin_preferences: {str(e)}")
         raise
 
-async def get_financial_stats(period: str = "daily") -> Dict:
+async def get_financial_stats(period: str = "daily") -> dict:
     """Calculate platform-wide financial statistics with period support"""
     try:
         db = get_database()
         bookings_col = db["bookings"]
-        
+
         # 1. Summary Stats
         pipeline = [
             {"$match": {"payment_status": "success"}},
@@ -475,7 +475,7 @@ async def get_financial_stats(period: str = "daily") -> Dict:
         ]
         stats_result = list(bookings_col.aggregate(pipeline))
         stats = stats_result[0] if stats_result else {"total_revenue": 0, "count": 0}
-        
+
         count = stats.get("count", 0)
         total_revenue = stats.get("total_revenue", 0)
         platform_fees = count * 200
@@ -484,7 +484,7 @@ async def get_financial_stats(period: str = "daily") -> Dict:
         # 2. Trend Data based on period
         from datetime import timedelta
         now = datetime.now(timezone.utc)
-        
+
         if period == "monthly":
             # Last 6 months
             start_date = now - timedelta(days=180)
@@ -493,7 +493,7 @@ async def get_financial_stats(period: str = "daily") -> Dict:
             # Last 7 days
             start_date = now - timedelta(days=7)
             group_format = "%Y-%m-%d"
-            
+
         daily_pipeline = [
             {"$match": {
                 "createdAt": {"$gte": start_date},
@@ -506,11 +506,11 @@ async def get_financial_stats(period: str = "daily") -> Dict:
             {"$sort": {"_id": 1}}
         ]
         trend_data = list(bookings_col.aggregate(daily_pipeline))
-        
+
         # 3. Growth
         current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
-            
+
         curr_month_rev = list(bookings_col.aggregate([
             {"$match": {"createdAt": {"$gte": current_month_start}, "payment_status": "success"}},
             {"$group": {"_id": None, "total": {"$sum": {"$toDouble": "$amount"}}}}
@@ -519,7 +519,7 @@ async def get_financial_stats(period: str = "daily") -> Dict:
             {"$match": {"createdAt": {"$gte": last_month_start, "$lt": current_month_start}, "payment_status": "success"}},
             {"$group": {"_id": None, "total": {"$sum": {"$toDouble": "$amount"}}}}
         ]))
-        
+
         cur_total = curr_month_rev[0]["total"] if curr_month_rev else 0
         last_total = last_month_rev[0]["total"] if last_month_rev else 0
         growth = round(((cur_total - last_total) / last_total * 100) if last_total > 0 else (100.0 if cur_total > 0 else 0), 1)
@@ -537,10 +537,10 @@ async def get_financial_stats(period: str = "daily") -> Dict:
             }},
             {"$unwind": {"path": "$lawyer_info", "preserveNullAndEmptyArrays": True}}
         ]
-        
+
         recent_tx_raw = list(bookings_col.aggregate(pipeline_tx))
         recent_tx = []
-        
+
         for tx in recent_tx_raw:
             recent_tx.append({
                 "id": str(tx.get("_id")),
@@ -569,7 +569,7 @@ async def get_financial_stats(period: str = "daily") -> Dict:
     except Exception as e:
         print(f"Error in get_financial_stats: {str(e)}")
         raise
-async def get_user_analytics(period: str = "daily") -> Dict:
+async def get_user_analytics(period: str = "daily") -> dict:
     """Calculate platform-wide user interaction and message analytics"""
     try:
         db = get_database()
@@ -583,14 +583,14 @@ async def get_user_analytics(period: str = "daily") -> Dict:
         # 1. Overall Summary
         total_messages = messages_col.count_documents({})
         total_sessions = sessions_col.count_documents({})
-        
+
         from datetime import timedelta
         now = datetime.now(timezone.utc)
         seven_days_ago = (now - timedelta(days=7)).isoformat()
-        
+
         # Count distinct users in the last 7 days
         active_users_7d = len(sessions_col.distinct("user_id", {"created_at": {"$gte": seven_days_ago}}))
-        
+
         # Calculate Avg Messages per Session
         avg_msgs = round(total_messages / total_sessions, 1) if total_sessions > 0 else 0
 
@@ -616,9 +616,9 @@ async def get_user_analytics(period: str = "daily") -> Dict:
             }},
             {"$sort": {"name": 1}}
         ]
-        
+
         trend_data_raw = list(messages_col.aggregate(trend_pipeline))
-        
+
         # Fill in missing dates to ensure today and all recent days are shown
         trend_data = []
         if period == "daily":
@@ -652,7 +652,7 @@ async def get_user_analytics(period: str = "daily") -> Dict:
             }}
         ]
         modes_raw = list(messages_col.aggregate(modes_pipeline))
-        
+
         # Consolidate raw modes into simplified categories
         consolidated = {"Legal": 0, "Research": 0}
         for m in modes_raw:
@@ -662,7 +662,7 @@ async def get_user_analytics(period: str = "daily") -> Dict:
             else:
                 # Default to Legal for any variation of legal or unknown modes
                 consolidated["Legal"] += m["value"]
-        
+
         modes = []
         colors = {"Legal": "#FF9000", "Research": "#181B25"}
         for name, val in consolidated.items():
@@ -694,10 +694,10 @@ async def get_user_analytics(period: str = "daily") -> Dict:
             {"$sort": {"messages": -1}},
             {"$limit": 5}
         ]
-        
+
         top_users_raw = list(messages_col.aggregate(top_users_pipeline))
         top_users = []
-        
+
         for u in top_users_raw:
             user_info = users_col.find_one({"email": u["_id"]})
             top_users.append({
@@ -746,7 +746,7 @@ async def get_user_analytics(period: str = "daily") -> Dict:
                 lat_val = 0
             # Token estimation (word count proxy if tokens not stored)
             tokens_est = len(msg.get("content", "")) / 4
-            
+
             if date_key not in latency_map:
                 latency_map[date_key] = []
                 tokens_map[date_key] = 0

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import importlib
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-import importlib
-
 import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
-
 
 ROOT = Path(__file__).resolve().parents[1]
 

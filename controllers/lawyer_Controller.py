@@ -1,10 +1,11 @@
+import os
+from datetime import datetime
+
+from bson import ObjectId
+from fastapi import UploadFile
+
 from config.cognilex_db import get_database
 from config.R2_config import r2_storage
-from bson import ObjectId
-from datetime import datetime
-from typing import Dict, List, Optional
-import os
-from fastapi import UploadFile
 
 
 async def save_file_to_r2(file: UploadFile, lawyer_id: str, file_type: str) -> str:
@@ -34,7 +35,7 @@ async def save_file_to_r2(file: UploadFile, lawyer_id: str, file_type: str) -> s
     return public_url
 
 
-async def register_lawyer(lawyer_data: Dict, files: Dict[str, UploadFile]) -> str:
+async def register_lawyer(lawyer_data: dict, files: dict[str, UploadFile]) -> str:
     """
     Register a new lawyer with document uploads to Cloudflare R2
 
@@ -118,10 +119,10 @@ async def register_lawyer(lawyer_data: Dict, files: Dict[str, UploadFile]) -> st
 
 
 async def get_all_lawyers(
-        province: Optional[str] = None,
-        specialization: Optional[str] = None,
+        province: str | None = None,
+        specialization: str | None = None,
         status: str = "approved"
-) -> List[Dict]:
+) -> list[dict]:
     """
     Get all lawyers with optional filters
     """
@@ -148,7 +149,7 @@ async def get_all_lawyers(
     return lawyers
 
 
-async def get_lawyer_by_id(lawyer_id: str) -> Optional[Dict]:
+async def get_lawyer_by_id(lawyer_id: str) -> dict | None:
     """
     Get lawyer details by ID
     """
@@ -230,7 +231,7 @@ async def delete_lawyer(lawyer_id: str) -> bool:
     return result.modified_count > 0
 
 
-async def get_pending_lawyers() -> List[Dict]:
+async def get_pending_lawyers() -> list[dict]:
     """
     Get all pending lawyer registrations for admin approval
     """
@@ -246,7 +247,7 @@ async def get_pending_lawyers() -> List[Dict]:
     return lawyers
 
 
-async def get_lawyer_profile_data(lawyer_id: str) -> Optional[Dict]:
+async def get_lawyer_profile_data(lawyer_id: str) -> dict | None:
     db = get_database()
     try:
 

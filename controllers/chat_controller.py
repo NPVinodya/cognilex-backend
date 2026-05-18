@@ -8,18 +8,18 @@ The controller forwards the user's question to the RAG FastAPI server at
 RAG_API_URL/ask and relays the full response back to the frontend.
 """
 
-import os
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 import httpx
-from fastapi import HTTPException, status
 from dotenv import load_dotenv
+from fastapi import HTTPException, status
 
-from models.chat import ChatRequest
 from config.cognilex_db import get_database
+from models.chat import ChatRequest
 
 load_dotenv()
 
@@ -29,7 +29,7 @@ logger = logging.getLogger("chat_controller")
 RAG_API_URL: str = os.getenv("RAG_API_URL", "http://localhost:8001")
 
 
-async def ask_rag(request: ChatRequest) -> Dict:
+async def ask_rag(request: ChatRequest) -> dict:
     """
     Forward a chat question to the CogniLex RAG service and return its response.
     Also persists the interaction to MongoDB.
@@ -70,7 +70,7 @@ async def ask_rag(request: ChatRequest) -> Dict:
     print(f"[DEBUG] User message saved to session {session_id}")
 
     # Normalize mode value that may have been supplied by the frontend.
-    def _normalize_mode(m: str | None) -> Optional[str]:
+    def _normalize_mode(m: str | None) -> str | None:
         if not m:
             return None
         m_low = m.strip().lower()
@@ -187,7 +187,7 @@ async def ask_rag(request: ChatRequest) -> Dict:
         )
 
 
-async def get_sessions(user_id: str) -> List[Dict]:
+async def get_sessions(user_id: str) -> list[dict]:
     """Fetch all chat sessions for a specific user from MongoDB."""
     print(f"[DEBUG] get_sessions for user_id={user_id}")
     db = get_database()
@@ -196,7 +196,7 @@ async def get_sessions(user_id: str) -> List[Dict]:
     return [{"id": s["id"], "title": s["title"], "updated_at": s["updated_at"]} for s in sessions]
 
 
-async def get_session_history(session_id: str) -> List[Dict]:
+async def get_session_history(session_id: str) -> list[dict]:
     """Fetch all messages for a specific chat session from MongoDB."""
     print(f"[DEBUG] get_session_history for session_id={session_id}")
     db = get_database()
@@ -225,7 +225,7 @@ async def update_session_title(session_id: str, new_title: str):
     print(f"[DEBUG] Session {session_id} renamed to: {new_title}")
 
 
-async def delete_session(session_id: str) -> Dict:
+async def delete_session(session_id: str) -> dict:
     """Delete a chat session and all its messages from MongoDB."""
     db = get_database()
     session = db.chat_sessions.find_one({"id": session_id})
@@ -242,10 +242,10 @@ async def delete_session(session_id: str) -> Dict:
     return {"deleted": True, "messages_removed": msg_result.deleted_count}
 
 
-async def guest_mode_chat(request: ChatRequest) -> Dict:
+async def guest_mode_chat(request: ChatRequest) -> dict:
     """
     Forward a guest mode question to the CogniLex RAG service's /guest_mode endpoint.
-    
+
     This is used for unauthenticated users accessing the guest chat on the homepage.
     No session or user tracking is required.
     Uses meta-llama/llama-4-scout-17b-16e-instruct for direct LLM response (no RAG).
@@ -352,7 +352,7 @@ async def guest_mode_chat(request: ChatRequest) -> Dict:
 
 # ── Share Chat Functions ──────────────────────────────────────────────────────
 
-async def create_share(session_id: str) -> Dict:
+async def create_share(session_id: str) -> dict:
     """
     Generate a unique share_id for the given chat session and persist it.
     Returns { share_id }. Idempotent — re-sharing the same session returns
@@ -381,7 +381,7 @@ async def create_share(session_id: str) -> Dict:
     return {"share_id": share_id}
 
 
-async def get_shared_chat(share_id: str) -> Dict:
+async def get_shared_chat(share_id: str) -> dict:
     """
     Fetch the session and its messages for the given share_id.
     Returns { title, sharedBy, messages[] }. No auth required.
@@ -419,7 +419,7 @@ async def get_shared_chat(share_id: str) -> Dict:
     }
 
 
-async def save_shared_chat(share_id: str, new_user_id: str) -> Dict:
+async def save_shared_chat(share_id: str, new_user_id: str) -> dict:
     """
     Clone the shared chat session into a brand-new session owned by new_user_id.
     Returns { new_session_id }.
@@ -433,7 +433,7 @@ async def save_shared_chat(share_id: str, new_user_id: str) -> Dict:
         )
 
     # Fetch original messages
-    original_messages: List[Any] = list(
+    original_messages: list[Any] = list(
         db.chat_messages.find({"session_id": session["id"]}).sort("created_at", 1)
     )
 

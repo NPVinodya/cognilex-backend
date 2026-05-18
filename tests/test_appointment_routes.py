@@ -1,14 +1,12 @@
 from __future__ import annotations
 
+import importlib
 from datetime import datetime, timezone
 from pathlib import Path
-
-import importlib
 
 import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -123,12 +121,12 @@ class FakeDatabase:
 @pytest.fixture()
 def main_module(monkeypatch):
     monkeypatch.chdir(ROOT)
-    
+
     # Mock MongoDB connection before importing anything that uses it
     config_db = importlib.import_module("config.cognilex_db")
     monkeypatch.setattr(config_db, "connect_to_mongodb", lambda: None)
     monkeypatch.setattr(config_db, "close_mongodb_connection", lambda: None)
-    
+
     main = importlib.import_module("main")
     monkeypatch.setattr(main, "connect_to_mongodb", lambda: None)
     monkeypatch.setattr(main, "close_mongodb_connection", lambda: None)
@@ -138,16 +136,16 @@ def main_module(monkeypatch):
 @pytest.fixture()
 def client(main_module, monkeypatch):
     from config.cognilex_db import get_database
-    
+
     # Override the get_database dependency for all tests
     def fake_get_db():
         return FakeDatabase()
-    
+
     main_module.app.dependency_overrides[get_database] = fake_get_db
-    
+
     with TestClient(main_module.app) as test_client:
         yield test_client
-    
+
     # Clean up dependency overrides
     main_module.app.dependency_overrides.clear()
 
@@ -206,20 +204,20 @@ def make_lawyer(*, _id: ObjectId | None = None, fullName: str = "Test Lawyer"):
 def client_with_db(main_module, monkeypatch, request):
     """Client with dynamic fake DB management per test."""
     from config.cognilex_db import get_database
-    
+
     current_db = {"db": FakeDatabase()}
-    
+
     def get_fake_db():
         return current_db["db"]
-    
+
     main_module.app.dependency_overrides[get_database] = get_fake_db
-    
+
     test_client = TestClient(main_module.app)
     test_client.set_db = lambda db: current_db.update({"db": db})
     test_client.get_db = lambda: current_db["db"]
-    
+
     yield test_client
-    
+
     # Clean up
     main_module.app.dependency_overrides.clear()
     test_client.close()
