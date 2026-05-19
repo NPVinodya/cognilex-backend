@@ -4,7 +4,7 @@ from bson import ObjectId
 from fastapi import HTTPException, status
 
 from config.cognilex_db import get_database
-from config.jwt import create_access_token
+from config.jwtutils import create_access_token
 from models.admin import AdminCreateRequest, AdminLoginRequest
 from models.user import UserModel
 
