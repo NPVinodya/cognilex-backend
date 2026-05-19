@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile, status
 from pymongo.errors import DuplicateKeyError
 
 from config.cognilex_db import get_database
-from config.jwt import create_access_token
+from config.jwtutils import create_access_token
 from models.user import (
     LoginRequest,
     RegisterOAuthRequest,
